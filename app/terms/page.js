@@ -17,7 +17,7 @@ export default function TermsConditions() {
             <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Last Updated: April 13, 2026</p>
 
             <div className="legal-content" style={{ lineHeight: '1.8', color: 'var(--text-primary)' }}>
-              <p style={{ marginBottom: '1.5rem' }}>By using BookMyArena, you agree to comply with and be bound by the following terms and conditions.</p>
+              <p style={{ marginBottom: '1.5rem' }}>By using Book Arena, you agree to comply with and be bound by the following terms and conditions.</p>
 
               <section style={{ marginBottom: '2rem' }}>
                 <h3 style={{ marginBottom: '1rem', color: 'var(--emerald-400)' }}>1. Booking and Payments</h3>
@@ -36,7 +36,7 @@ export default function TermsConditions() {
 
               <section style={{ marginBottom: '2rem' }}>
                 <h3 style={{ marginBottom: '1rem', color: 'var(--emerald-400)' }}>4. Platform Fees</h3>
-                <p>BookMyArena charges a small platform service fee on every transaction to maintain the platform and provide support. This fee is non-refundable unless specified otherwise.</p>
+                <p>Book Arena charges a small platform service fee on every transaction to maintain the platform and provide support. This fee is non-refundable unless specified otherwise.</p>
               </section>
             </div>
           </div>

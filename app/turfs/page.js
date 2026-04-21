@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
@@ -8,23 +8,43 @@ import TurfCard from '@/components/TurfCard';
 import { apiGet } from '@/lib/api';
 import { SPORTS } from '@/lib/constants';
 
-export default function TurfsPage() {
+export const dynamic = 'force-dynamic';
+
+function TurfsPageContent() {
   const searchParams = useSearchParams();
   const [turfs, setTurfs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeSport, setActiveSport] = useState(searchParams.get('sport') || 'all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [usingFallback, setUsingFallback] = useState(false);
 
   useEffect(() => {
     loadTurfs();
-  }, [activeSport]);
+  }, [activeSport, searchParams]);
 
   async function loadTurfs() {
     setLoading(true);
+    setUsingFallback(false);
     try {
-      const params = activeSport !== 'all' ? `?sport=${activeSport}` : '';
-      const data = await apiGet(`/turfs${params}`);
-      setTurfs(data.turfs || []);
+      const lat = searchParams.get('lat');
+      const lng = searchParams.get('lng');
+      
+      let query = `?sport=${activeSport !== 'all' ? activeSport : ''}`;
+      if (lat && lng) {
+        query += `&lat=${lat}&lng=${lng}&radius=100`; // Search within 100km
+      }
+      
+      const data = await apiGet(`/turfs${query}`);
+      
+      // If proximity search yielded no results, fetch all active turfs instead
+      if (data.turfs && data.turfs.length === 0 && (lat || lng)) {
+        console.log('No turfs nearby, showing all turfs...');
+        const fallbackData = await apiGet(`/turfs?sport=${activeSport !== 'all' ? activeSport : ''}`);
+        setTurfs(fallbackData.turfs || []);
+        setUsingFallback(true);
+      } else {
+        setTurfs(data.turfs || []);
+      }
     } catch (err) {
       console.error(err);
       setTurfs([]);
@@ -128,4 +148,12 @@ function getDemoTurfs() {
     { id: 5, name: 'Ace Tennis Academy', location: 'Adyar, Chennai', sport_type: 'tennis', price_per_hour: 900, images: ['https://images.unsplash.com/photo-1554068865-24cecd4e34b8?w=800&q=80'], amenities: ['Coaching', 'Equipment'] },
     { id: 6, name: 'Slam Dunk Arena', location: 'Nungambakkam, Chennai', sport_type: 'basketball', price_per_hour: 1100, images: ['https://images.unsplash.com/photo-1546519638-68e109498ffc?w=800&q=80'], amenities: ['Floodlights', 'Drinking Water'] },
   ];
+}
+
+export default function TurfsPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <TurfsPageContent />
+    </Suspense>
+  );
 }

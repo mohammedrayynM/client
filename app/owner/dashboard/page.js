@@ -23,7 +23,8 @@ export default function OwnerDashboard() {
     name: '', location: '', address: '', sport_type: 'cricket',
     price_per_hour: '', description: '', images: [], amenities: [],
     open_time: '06:00', close_time: '23:00',
-    markup_type: 'fixed', markup_value: '200'
+    markup_type: 'fixed', markup_value: '200',
+    latitude: '', longitude: ''
   });
 
   // Slot blocking
@@ -238,7 +239,7 @@ export default function OwnerDashboard() {
     setTurfForm({ 
       name: '', location: '', address: '', sport_type: 'cricket', price_per_hour: '', 
       description: '', images: [], amenities: [], open_time: '06:00', close_time: '23:00',
-      markup_type: 'fixed', markup_value: '200'
+      markup_type: 'fixed', markup_value: '200', latitude: '', longitude: ''
     });
   }
 
@@ -249,7 +250,8 @@ export default function OwnerDashboard() {
       sport_type: turf.sport_type, price_per_hour: turf.price_per_hour,
       description: turf.description || '', images: turf.images || [], amenities: turf.amenities || [],
       open_time: turf.open_time || '06:00', close_time: turf.close_time || '23:00',
-      markup_type: turf.markup_type || 'fixed', markup_value: turf.markup_value || 0
+      markup_type: turf.markup_type || 'fixed', markup_value: turf.markup_value || 0,
+      latitude: turf.latitude || '', longitude: turf.longitude || ''
     });
     setShowTurfForm(true);
   }
@@ -297,8 +299,8 @@ export default function OwnerDashboard() {
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <Link href="/" className="navbar-logo" style={{ fontSize: '1.2rem' }}>
-            <div className="logo-icon" style={{ width: 32, height: 32, fontSize: '0.9rem' }}>🏟️</div>
-            Book<span className="accent">My</span>Arena
+            <img src="/images/logo.png" alt="Logo" style={{ width: 32, height: 32, borderRadius: '4px' }} />
+            Book <span className="accent">Arena</span>
           </Link>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>Owner Panel</p>
         </div>
@@ -451,6 +453,18 @@ export default function OwnerDashboard() {
                     <label className="form-label">Full Address *</label>
                     <input type="text" className="form-input" placeholder="Complete address for customers"
                       value={turfForm.address} onChange={(e) => setTurfForm({ ...turfForm, address: e.target.value })} required />
+                  </div>
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Latitude (Optional)</label>
+                      <input type="number" step="any" className="form-input" placeholder="e.g. 13.0827"
+                        value={turfForm.latitude} onChange={(e) => setTurfForm({ ...turfForm, latitude: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Longitude (Optional)</label>
+                      <input type="number" step="any" className="form-input" placeholder="e.g. 80.2707"
+                        value={turfForm.longitude} onChange={(e) => setTurfForm({ ...turfForm, longitude: e.target.value })} />
+                    </div>
                   </div>
                   <div className="grid-2">
                     <div className="form-group">

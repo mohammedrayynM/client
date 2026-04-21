@@ -6,7 +6,10 @@ export default function Footer() {
       <div className="container">
         <div className="footer-grid">
           <div className="footer-brand">
-            <div className="logo">🏟️ Book<span>My</span>Arena</div>
+            <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <img src="/images/logo.png" alt="Book Arena Logo" style={{ height: '45px', width: 'auto', borderRadius: '8px' }} />
+              <span>Book <span style={{ color: 'var(--emerald-400)' }}>Arena</span></span>
+            </div>
             <p>
               Your one-stop platform for booking sports turfs. 
               Play your favorite sport, anytime, anywhere.
@@ -45,7 +48,7 @@ export default function Footer() {
         </div>
 
         <div className="footer-bottom">
-          <p>© {new Date().getFullYear()} BookMyArena. All rights reserved.</p>
+          <p>© {new Date().getFullYear()} BookArena. All rights reserved.</p>
           <p>Made with 💚 for sports lovers</p>
         </div>
       </div>

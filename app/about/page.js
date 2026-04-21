@@ -16,7 +16,7 @@ export default function AboutUs() {
                 Join the <span style={{ color: 'var(--emerald-400)' }}>Revolution</span> of Turf Booking.
               </h1>
               <p style={{ fontSize: '1.2rem', color: 'var(--text-muted)', marginBottom: '2rem' }}>
-                BookMyArena was born out of a simple passion: making sports accessible to everyone. We've built the ultimate platform to connect athletes with the best venues in the city.
+                Book Arena was born out of a simple passion: making sports accessible to everyone. We've built the ultimate platform to connect athletes with the best venues in the city.
               </p>
               <div style={{ display: 'flex', gap: '2rem' }}>
                 <div>

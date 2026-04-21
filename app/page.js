@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import TurfCard from '@/components/TurfCard';
@@ -13,6 +13,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
 
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [isLocating, setIsLocating] = useState(false);
+  const searchInputRef = useRef(null);
+  const autocompleteRef = useRef(null);
 
   const heroImages = [
     '/images/hero/football.png', 
@@ -25,6 +28,30 @@ export default function HomePage() {
     const interval = setInterval(() => {
       setCurrentSlide(prev => (prev + 1) % heroImages.length);
     }, 5000);
+
+    // Initialize Google Maps Autocomplete
+    if (typeof window !== 'undefined' && window.google) {
+      try {
+        if (searchInputRef.current && !process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.includes('placeholder')) {
+          autocompleteRef.current = new window.google.maps.places.Autocomplete(searchInputRef.current, {
+            types: ['(cities)'],
+            componentRestrictions: { country: 'in' }
+          });
+
+          autocompleteRef.current.addListener('place_changed', () => {
+            const place = autocompleteRef.current.getPlace();
+            if (place.geometry) {
+              const lat = place.geometry.location.lat();
+              const lng = place.geometry.location.lng();
+              window.location.href = `/turfs?lat=${lat}&lng=${lng}`;
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('Google Maps Autocomplete failed to initialize:', err);
+      }
+    }
+
     return () => clearInterval(interval);
   }, []);
 
@@ -55,6 +82,16 @@ export default function HomePage() {
 
         <div className="container">
           <div className="hero-content">
+            <h1 className="hero-title" style={{ fontSize: 'clamp(2.5rem, 8vw, 4.5rem)', lineHeight: 1.1 }}>
+              Book Your Perfect Sports Arena in Seconds
+            </h1>
+
+            <div className="hero-actions" style={{ marginTop: '1.5rem', marginBottom: '2.5rem' }}>
+              <Link href="/turfs" className="btn btn-primary btn-lg" style={{ borderRadius: '50px', padding: '16px 40px' }}>
+                🏟️ Explore All Turfs
+              </Link>
+            </div>
+
             {/* Smart Search Bar */}
             <div className="search-container" style={{ 
               background: 'rgba(255, 255, 255, 0.05)', 
@@ -66,12 +103,15 @@ export default function HomePage() {
               alignItems: 'center',
               width: '100%',
               maxWidth: '600px',
-              margin: '0 auto 2.5rem',
-              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)'
+              margin: '0 auto',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
+              position: 'relative',
+              zIndex: 10
             }}>
               <input 
                 type="text" 
-                placeholder="Search near your location..." 
+                ref={searchInputRef}
+                placeholder="Enter your city or area..." 
                 style={{ 
                   background: 'transparent', 
                   border: 'none', 
@@ -79,38 +119,58 @@ export default function HomePage() {
                   flex: 1, 
                   padding: '12px 0',
                   outline: 'none',
-                  fontSize: '0.95rem'
+                  fontSize: '0.95rem',
+                  position: 'relative',
+                  zIndex: 11
                 }}
               />
               <button 
                 onClick={() => {
+                  if (isLocating) return;
                   if (navigator.geolocation) {
+                    setIsLocating(true);
                     navigator.geolocation.getCurrentPosition((pos) => {
-                      alert(`Finding turfs near: ${pos.coords.latitude}, ${pos.coords.longitude}`);
-                      window.location.href = "/turfs";
-                    }, () => alert("Please enable location access"));
+                      const { latitude, longitude } = pos.coords;
+                      window.location.href = `/turfs?lat=${latitude}&lng=${longitude}`;
+                    }, (err) => {
+                      setIsLocating(false);
+                      alert("Please enable location access to find nearby turfs");
+                      console.error(err);
+                    });
+                  } else {
+                    alert("Geolocation is not supported by your browser");
                   }
                 }}
                 className="btn btn-primary" 
+                disabled={isLocating}
                 style={{ 
                   borderRadius: '50px', 
                   padding: '10px 24px', 
                   fontSize: '0.85rem',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  opacity: isLocating ? 0.8 : 1,
+                  cursor: isLocating ? 'wait' : 'pointer'
                 }}
               >
-                Find Near Me
+                {isLocating ? (
+                  <>
+                    <div className="spinner-mini" style={{
+                      width: '18px',
+                      height: '18px',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: 'white',
+                      borderRadius: '50%',
+                      animation: 'spin 1s linear infinite'
+                    }} />
+                    Finding...
+                  </>
+                ) : (
+                  <>📍 Find Near Me</>
+                )}
               </button>
-            </div>
-
-            <h1 className="hero-title" style={{ fontSize: 'clamp(2.5rem, 8vw, 4.5rem)', lineHeight: 1.1 }}>
-              Book Your Perfect Sports Arena in Seconds
-            </h1>
-
-            <div className="hero-actions" style={{ marginTop: '2.5rem' }}>
-              <Link href="/turfs" className="btn btn-primary btn-lg" style={{ borderRadius: '50px', padding: '16px 40px' }}>
-                🏟️ Explore All Turfs
-              </Link>
             </div>
           </div>
         </div>

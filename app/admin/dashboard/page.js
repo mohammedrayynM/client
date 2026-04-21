@@ -25,6 +25,10 @@ export default function AdminDashboard() {
     price_per_hour: '', description: '', images: [], amenities: []
   });
 
+  // Turf Analytics
+  const [selectedTurfAnalytics, setSelectedTurfAnalytics] = useState(null);
+  const [turfEarnings, setTurfEarnings] = useState(null);
+
   // Commission
   const [commission, setCommission] = useState('');
 
@@ -84,6 +88,28 @@ export default function AdminDashboard() {
     if (!confirm('Delete this turf?')) return;
     try { await apiDelete(`/admin/turfs/${id}`); loadAllData(); }
     catch (err) { alert(err.message); }
+  }
+
+  async function viewTurfAnalytics(turf) {
+    try {
+      const data = await apiGet(`/admin/turfs/${turf.id}/earnings`);
+      setSelectedTurfAnalytics(turf);
+      setTurfEarnings(data);
+    } catch (err) {
+      alert('Failed to load turf analytics: ' + err.message);
+    }
+  }
+
+  async function handleDeleteTurfBookings(turfId) {
+    if (!confirm('Are you absolutely sure you want to delete ALL bookings for this turf? This cannot be undone.')) return;
+    try {
+      await apiDelete(`/admin/turfs/${turfId}/bookings`);
+      alert('All bookings for this turf deleted.');
+      loadAllData();
+      setSelectedTurfAnalytics(null);
+    } catch (err) {
+      alert(err.message);
+    }
   }
 
   // Owner management
@@ -148,8 +174,8 @@ export default function AdminDashboard() {
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <Link href="/" className="navbar-logo" style={{ fontSize: '1.2rem' }}>
-            <div className="logo-icon" style={{ width: 32, height: 32, fontSize: '0.9rem', background: 'var(--gradient-gold)' }}>👑</div>
-            <span style={{ color: 'var(--gold-400)' }}>Admin</span>Panel
+            <img src="/images/logo.png" alt="Logo" style={{ width: 32, height: 32, borderRadius: '4px' }} />
+            <span style={{ color: 'var(--emerald-400)' }}>Book </span>Arena
           </Link>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>Platform Control</p>
         </div>
@@ -364,6 +390,7 @@ export default function AdminDashboard() {
                         <td>
                           <div style={{ display: 'flex', gap: '0.5rem' }}>
                             <button className="btn btn-secondary btn-sm" onClick={() => editTurf(t)}>✏️</button>
+                            <button className="btn btn-primary btn-sm" onClick={() => viewTurfAnalytics(t)}>📊 Data</button>
                             <button className="btn btn-danger btn-sm" onClick={() => handleDeleteTurf(t.id)}>🗑️</button>
                           </div>
                         </td>
@@ -374,6 +401,80 @@ export default function AdminDashboard() {
               </table>
               {turfs.length === 0 && <div className="empty-state"><div className="empty-icon">🏟️</div><h3>No turfs</h3></div>}
             </div>
+
+            {selectedTurfAnalytics && (
+              <div className="card" style={{ padding: '2rem', marginTop: '2rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <h3 style={{ fontFamily: 'var(--font-display)', fontWeight: 700, marginBottom: '1.5rem', color: 'var(--text-primary)' }}>
+                    📊 Analytics: {selectedTurfAnalytics.name}
+                  </h3>
+                  <button className="btn btn-secondary btn-sm" onClick={() => setSelectedTurfAnalytics(null)}>✖ Close</button>
+                </div>
+                
+                <div className="grid-3" style={{ marginBottom: '1.5rem' }}>
+                  <div className="stat-card">
+                    <div className="stat-value" style={{ color: 'var(--emerald-400)' }}>{formatPrice(turfEarnings?.total || 0)}</div>
+                    <div className="stat-label">Total Revenue</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value" style={{ color: 'var(--gold-400)' }}>{turfEarnings?.daily?.reduce((acc, d) => acc + d.total, 0) ? formatPrice(turfEarnings.daily.reduce((acc, d) => acc + d.total, 0)) : '₹0'}</div>
+                    <div className="stat-label">30-Day Revenue</div>
+                  </div>
+                  <div className="stat-card">
+                    <div className="stat-value" style={{ color: '#3b82f6' }}>{turfEarnings?.monthly?.length > 0 ? formatPrice(turfEarnings.monthly[0].total) : '₹0'}</div>
+                    <div className="stat-label">This Month Revenue</div>
+                  </div>
+                </div>
+
+                <div className="grid-2">
+                  <div>
+                    <h4 style={{ marginBottom: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Last 30 Days Revenue</h4>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '1.5rem', paddingRight: '10px' }}>
+                      {turfEarnings?.daily?.length > 0 ? (
+                        turfEarnings.daily.map((d, i) => (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>{formatDate(d.date)}</span>
+                            <span style={{ fontWeight: 600, color: 'var(--emerald-400)' }}>{formatPrice(d.total)}</span>
+                          </div>
+                        ))
+                      ) : (
+                        <p style={{ color: 'var(--text-muted)' }}>No revenue in last 30 days.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <h4 style={{ marginBottom: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>Monthly History</h4>
+                    <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '1.5rem', paddingRight: '10px' }}>
+                      {turfEarnings?.monthly?.length > 0 ? (
+                        turfEarnings.monthly.map((m, i) => {
+                          const dateObj = new Date(m.year, m.month - 1);
+                          return (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                              <span style={{ color: 'var(--text-muted)' }}>{dateObj.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                              <span style={{ fontWeight: 600, color: '#3b82f6' }}>{formatPrice(m.total)}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p style={{ color: 'var(--text-muted)' }}>No monthly revenue recorded.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ padding: '1.5rem', background: 'rgba(239,68,68,0.05)', borderRadius: '12px', border: '1px solid rgba(239,68,68,0.2)', marginTop: '2rem' }}>
+                  <h4 style={{ color: '#ef4444', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '1.2rem' }}>⚠</span> Danger Zone
+                  </h4>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                    This action will permanently delete <strong>all booking records, payments, and revenue history</strong> associated with <strong>{selectedTurfAnalytics.name}</strong>. This action is irreversible.
+                  </p>
+                  <button className="btn btn-danger" onClick={() => handleDeleteTurfBookings(selectedTurfAnalytics.id)}>
+                    🗑️ Delete All Bookings Data
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 

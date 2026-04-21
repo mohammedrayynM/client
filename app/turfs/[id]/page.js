@@ -9,6 +9,51 @@ import Footer from '@/components/Footer';
 import { apiGet, apiPost } from '@/lib/api';
 import { getSportInfo, formatPrice, DEFAULT_TURF_IMAGES } from '@/lib/constants';
 
+function formatContinuousSlots(slotsList) {
+  if (!slotsList || slotsList.length === 0) return 'Select slots';
+
+  const parseTime = (timeStr) => {
+    const [time, modifier] = timeStr.trim().split(' ');
+    let [hours, minutes] = time.split(':');
+    hours = parseInt(hours, 10);
+    minutes = parseInt(minutes, 10);
+    if (modifier === 'PM' && hours !== 12) hours += 12;
+    if (modifier === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
+
+  const parsedSlots = slotsList.map(slot => {
+    const [startStr, endStr] = slot.split('-');
+    return {
+      slot: slot,
+      start: parseTime(startStr),
+      end: parseTime(endStr),
+      startStr: startStr.trim(),
+      endStr: endStr.trim()
+    };
+  });
+
+  parsedSlots.sort((a, b) => a.start - b.start);
+
+  const merged = [];
+  let currentGroup = { ...parsedSlots[0] };
+
+  for (let i = 1; i < parsedSlots.length; i++) {
+    const slot = parsedSlots[i];
+    if (slot.start === currentGroup.end) {
+      currentGroup.end = slot.end;
+      currentGroup.endStr = slot.endStr;
+    } else {
+      merged.push(currentGroup);
+      currentGroup = { ...slot };
+    }
+  }
+  merged.push(currentGroup);
+
+  return merged.map(group => `${group.startStr} - ${group.endStr}`).join(', ');
+}
+
+
 export default function TurfDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -16,7 +61,7 @@ export default function TurfDetailPage() {
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState('');
   const [slots, setSlots] = useState([]);
-  const [selectedSlot, setSelectedSlot] = useState('');
+  const [selectedSlots, setSelectedSlots] = useState([]);
   const [selectedSlotPrice, setSelectedSlotPrice] = useState(null);
   const [serviceFee, setServiceFee] = useState(20);
   const [slotsLoading, setSlotsLoading] = useState(false);
@@ -26,6 +71,7 @@ export default function TurfDetailPage() {
   const [verifying, setVerifying] = useState(false);
   const [activeImage, setActiveImage] = useState(0);
   const [showAllDates, setShowAllDates] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   
   // Coupon state
   const [availableCoupons, setAvailableCoupons] = useState([]);
@@ -75,6 +121,13 @@ export default function TurfDetailPage() {
     const m = String(d.getMonth() + 1).padStart(2, '0');
     const dd = String(d.getDate()).padStart(2, '0');
     setSelectedDate(`${y}-${m}-${dd}`);
+
+    const userData = localStorage.getItem('userData');
+    if (userData) {
+      const user = JSON.parse(userData);
+      setCurrentUser(user);
+      setBookingData({ name: user.name, phone: '', email: user.email });
+    }
   }, []);
 
   useEffect(() => {
@@ -106,14 +159,14 @@ export default function TurfDetailPage() {
 
   const [pricingBreakdown, setPricingBreakdown] = useState(null);
 
-  async function calculatePricing(currentSlot, currentCoupon) {
-    if (!currentSlot || !selectedDate) return;
+  async function calculatePricing(currentSlots, currentCoupon) {
+    if (!currentSlots || currentSlots.length === 0 || !selectedDate) return;
     
     try {
       const data = await apiPost('/bookings/calculate-price', {
         turf_id: parseInt(params.id),
         booking_date: selectedDate,
-        time_slot: currentSlot,
+        time_slots: currentSlots,
         coupon_code: currentCoupon || undefined
       });
       setPricingBreakdown(data);
@@ -128,7 +181,7 @@ export default function TurfDetailPage() {
 
   async function handleApplyCoupon() {
     if (!couponCode.trim()) return;
-    if (!selectedSlot) {
+    if (selectedSlots.length === 0) {
       setCouponError('Please select a time slot first');
       return;
     }
@@ -137,7 +190,7 @@ export default function TurfDetailPage() {
     setCouponError('');
     
     try {
-      const breakdown = await calculatePricing(selectedSlot, couponCode.trim());
+      const breakdown = await calculatePricing(selectedSlots, couponCode.trim());
       
       if (breakdown && breakdown.coupon) {
         setAppliedCoupon(breakdown.coupon);
@@ -160,7 +213,7 @@ export default function TurfDetailPage() {
     setCouponCode('');
     setCouponError('');
     setCouponSuccess('');
-    calculatePricing(selectedSlot, null);
+    calculatePricing(selectedSlots, null);
   }
 
   async function loadTurf() {
@@ -177,7 +230,7 @@ export default function TurfDetailPage() {
 
   async function loadSlots() {
     setSlotsLoading(true);
-    setSelectedSlot('');
+    setSelectedSlots([]);
     try {
       const data = await apiGet(`/turfs/${params.id}/slots?date=${selectedDate}`);
       setSlots(data.slots || []);
@@ -191,7 +244,7 @@ export default function TurfDetailPage() {
 
   async function handleBooking(e) {
     e.preventDefault();
-    if (!selectedSlot || !bookingData.name || !bookingData.phone) return;
+    if (selectedSlots.length === 0 || !bookingData.name || !bookingData.phone) return;
 
     const loadRazorpay = () => {
       return new Promise((resolve) => {
@@ -218,8 +271,9 @@ export default function TurfDetailPage() {
         customer_phone: bookingData.phone,
         customer_email: bookingData.email,
         booking_date: selectedDate,
-        time_slot: selectedSlot,
+        time_slots: selectedSlots,
         coupon_code: appliedCoupon ? appliedCoupon.code : undefined,
+        user_id: currentUser ? currentUser.id : null
       });
 
       // Helper: always send confirmation
@@ -233,7 +287,7 @@ export default function TurfDetailPage() {
               customer_name: bookingData.name,
               turf_name: turf.name,
               booking_date: selectedDate,
-              time_slot: selectedSlot,
+              time_slot: selectedSlots.join(', '),
               amount: data.amount,
               service_fee: data.serviceFee,
               discount_amount: data.discountAmount
@@ -259,7 +313,7 @@ export default function TurfDetailPage() {
           key: data.key_id,
           amount: data.amount * 100,
           currency: data.currency,
-          name: 'BookMyArena',
+          name: 'Book Arena',
           description: `Booking at ${turf.name}`,
           order_id: data.order_id,
           handler: async function (response) {
@@ -499,15 +553,25 @@ export default function TurfDetailPage() {
                          key={slot.time}
                          className={`slot-capsule ${
                            slot.status === 'available'
-                             ? selectedSlot === slot.time ? 'available selected' : 'available'
+                             ? selectedSlots.includes(slot.time) ? 'available selected' : 'available'
                              : slot.status === 'booked' ? 'booked' : 'blocked'
                          }`}
                          onClick={() => {
                            if (slot.status === 'available') {
-                             setSelectedSlot(slot.time);
-                             setSelectedSlotPrice(slot.price);
-                             setShowBookingForm(true);
-                             calculatePricing(slot.time, appliedCoupon?.code);
+                             let newSlots = [...selectedSlots];
+                             if (newSlots.includes(slot.time)) {
+                               newSlots = newSlots.filter(t => t !== slot.time);
+                             } else {
+                               newSlots.push(slot.time);
+                             }
+                             setSelectedSlots(newSlots);
+                             if (newSlots.length > 0) {
+                               setShowBookingForm(true);
+                               calculatePricing(newSlots, appliedCoupon?.code);
+                             } else {
+                               setShowBookingForm(false);
+                               setPricingBreakdown(null);
+                             }
                            }
                          }}
                        >
@@ -566,7 +630,7 @@ export default function TurfDetailPage() {
                             apiPost('/bookings/calculate-price', {
                               turf_id: parseInt(params.id),
                               booking_date: selectedDate,
-                              time_slot: selectedSlot,
+                              time_slots: selectedSlots,
                               coupon_code: coupon.code
                             }).then(data => {
                               setPricingBreakdown(data);
@@ -609,8 +673,8 @@ export default function TurfDetailPage() {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Time Slot</span>
-                    <span style={{ color: selectedSlot ? 'var(--emerald-400)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.9rem' }}>
-                      {selectedSlot || 'Select a slot'}
+                    <span style={{ color: selectedSlots.length > 0 ? 'var(--emerald-400)' : 'var(--text-muted)', fontWeight: 600, fontSize: '0.9rem' }}>
+                      {formatContinuousSlots(selectedSlots)}
                     </span>
                   </div>
                   
@@ -623,7 +687,7 @@ export default function TurfDetailPage() {
                         </span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                        <span style={{ color: 'var(--emerald-400)', fontSize: '0.85rem' }}>BookMyArena Exclusive Deal</span>
+                        <span style={{ color: 'var(--emerald-400)', fontSize: '0.85rem' }}>BookArena Exclusive Deal</span>
                         <span style={{ color: 'var(--emerald-400)', fontWeight: 600, fontSize: '0.9rem' }}>
                           -{formatPrice(pricingBreakdown.markupAmount)} OFF
                         </span>
@@ -662,7 +726,7 @@ export default function TurfDetailPage() {
                 </div>
 
                 {/* Coupon Input */}
-                {showBookingForm && selectedSlot && (
+                {showBookingForm && selectedSlots.length > 0 && (
                   <div style={{ marginBottom: '1.5rem' }}>
                     <label className="form-label">🎟️ Have a Coupon?</label>
                     {appliedCoupon ? (
@@ -721,7 +785,15 @@ export default function TurfDetailPage() {
                   
 
                 {/* Booking Form */}
-                {showBookingForm && selectedSlot ? (
+                {showBookingForm && selectedSlots.length > 0 ? (
+                  !currentUser ? (
+                    <div style={{ textAlign: 'center', padding: '1rem' }}>
+                      <p style={{ color: '#f87171', marginBottom: '1rem' }}>Login is compulsory to secure your booking.</p>
+                      <Link href={`/login?redirect=/turfs/${params.id}`} className="btn btn-primary" style={{ width: '100%', display: 'inline-block' }}>
+                        Login to Continue
+                      </Link>
+                    </div>
+                  ) : (
                   <form onSubmit={handleBooking} id="booking-form">
                     <div className="form-group">
                       <label className="form-label">Your Name *</label>
@@ -768,10 +840,11 @@ export default function TurfDetailPage() {
                           Processing...
                         </>
                       ) : (
-                        `💳 Pay ${formatPrice((selectedSlotPrice || turf.price_per_hour) + serviceFee - discountAmount)} & Book`
+                        `💳 Pay ${formatPrice(pricingBreakdown ? pricingBreakdown.finalAmount : (selectedSlots.length * (selectedSlotPrice || turf.price_per_hour) + serviceFee - discountAmount))} & Book`
                       )}
                     </button>
                   </form>
+                  )
                 ) : (
                   <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
                     <p>👆 Select a time slot to proceed</p>
