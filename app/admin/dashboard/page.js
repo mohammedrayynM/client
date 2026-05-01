@@ -14,6 +14,7 @@ export default function AdminDashboard() {
   const [turfs, setTurfs] = useState([]);
   const [owners, setOwners] = useState([]);
   const [bookings, setBookings] = useState([]);
+  const [payouts, setPayouts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -45,17 +46,19 @@ export default function AdminDashboard() {
 
   async function loadAllData() {
     try {
-      const [dashData, turfsData, ownersData, bookingsData] = await Promise.all([
+      const [dashData, turfsData, ownersData, bookingsData, payoutsData] = await Promise.all([
         apiGet('/admin/dashboard').catch(() => ({ stats: {} })),
         apiGet('/admin/turfs').catch(() => ({ turfs: [] })),
         apiGet('/admin/owners').catch(() => ({ owners: [] })),
         apiGet('/admin/bookings').catch(() => ({ bookings: [] })),
+        apiGet('/admin/payouts').catch((err) => { console.error('Payouts fetch error:', err); return { payouts: [] }; }),
       ]);
       setStats(dashData.stats || {});
       setTurfs(turfsData.turfs || []);
       setOwners(ownersData.owners || []);
       setBookings(bookingsData.bookings || []);
-      setCommission(dashData.stats?.commission_percent?.toString() || '10');
+      setPayouts(payoutsData.payouts || []);
+      setCommission(dashData.stats?.commission_percent?.toString() ?? '10');
     } catch (err) {
       console.log('Using empty data');
     } finally {
@@ -141,6 +144,18 @@ export default function AdminDashboard() {
     catch (err) { alert(err.message); }
   }
 
+  // Payout toggle
+  async function togglePayoutStatus(turfId, date, currentStatus) {
+    try {
+      const newStatus = currentStatus === 'paid' ? 'not_paid' : 'paid';
+      const formattedDate = new Date(date).toISOString().split('T')[0];
+      await apiPost('/admin/payouts/mark-paid', { turf_id: turfId, date: formattedDate, status: newStatus });
+      loadAllData();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
   function editTurf(turf) {
     setEditingTurf(turf);
     setTurfForm({
@@ -166,6 +181,7 @@ export default function AdminDashboard() {
     { key: 'owners', icon: '👥', label: 'Owners' },
     { key: 'bookings', icon: '📋', label: 'Bookings' },
     { key: 'revenue', icon: '💰', label: 'Revenue' },
+    { key: 'payouts', icon: '💸', label: 'Daily Payouts' },
   ];
 
   return (
@@ -245,7 +261,7 @@ export default function AdminDashboard() {
                   <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{formatPrice(stats?.total_revenue || 0)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-                  <span style={{ color: 'var(--text-muted)' }}>Commission ({stats?.commission_percent || 10}%)</span>
+                  <span style={{ color: 'var(--text-muted)' }}>Commission ({stats?.commission_percent ?? 10}%)</span>
                   <span style={{ color: 'var(--emerald-400)', fontWeight: 600 }}>{formatPrice(stats?.platform_revenue || 0)}</span>
                 </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-subtle)', paddingTop: '0.75rem' }}>
@@ -324,13 +340,19 @@ export default function AdminDashboard() {
                   </div>
                   <div className="grid-2">
                     <div className="form-group">
-                      <label className="form-label">Sport Type *</label>
-                      <select className="form-input" value={turfForm.sport_type}
-                        onChange={(e) => setTurfForm({ ...turfForm, sport_type: e.target.value })}>
+                      <label className="form-label">Sport Type / Play Zone *</label>
+                      <select className="form-input" 
+                        value={['cricket', 'football', 'badminton', 'tennis', 'basketball', 'volleyball', 'box cricket'].includes(turfForm.sport_type?.toLowerCase()) ? turfForm.sport_type.toLowerCase() : 'custom'}
+                        onChange={(e) => setTurfForm({ ...turfForm, sport_type: e.target.value === 'custom' ? '' : e.target.value })}>
                         {['Cricket', 'Football', 'Badminton', 'Tennis', 'Basketball', 'Volleyball', 'Box Cricket'].map(s => (
                           <option key={s} value={s.toLowerCase()}>{s}</option>
                         ))}
+                        <option value="custom">+ Add New Sport / Custom Play Zone</option>
                       </select>
+                      {!['cricket', 'football', 'badminton', 'tennis', 'basketball', 'volleyball', 'box cricket'].includes(turfForm.sport_type?.toLowerCase()) && (
+                        <input type="text" className="form-input" style={{ marginTop: '0.5rem' }} placeholder="Enter custom sport or play zone" 
+                          value={turfForm.sport_type} onChange={(e) => setTurfForm({ ...turfForm, sport_type: e.target.value })} required />
+                      )}
                     </div>
                     <div className="form-group">
                       <label className="form-label">Price per Hour (₹) *</label>
@@ -538,7 +560,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {bookings.map(b => {
-                    const comm = (b.amount * (stats?.commission_percent || 10)) / 100;
+                    const comm = (b.amount * (stats?.commission_percent ?? 10)) / 100;
                     return (
                     <tr key={b.id}>
                       <td>#{b.id}</td>
@@ -576,7 +598,7 @@ export default function AdminDashboard() {
               {[
                 { icon: '💰', label: 'Total Bookings Value', value: formatCompactNumber(stats?.total_revenue || 0), color: 'var(--emerald-400)' },
                 { icon: '👑', label: 'Platform Revenue', value: formatCompactNumber(stats?.platform_revenue || 0), color: 'var(--gold-400)' },
-                { icon: '📊', label: 'Commission Rate', value: `${stats?.commission_percent || 10}%`, color: '#3b82f6' },
+                { icon: '📊', label: 'Commission Rate', value: `${stats?.commission_percent ?? 10}%`, color: '#3b82f6' },
               ].map((s, i) => (
                 <div key={i} className="stat-card">
                   <div className="stat-icon">{s.icon}</div>
@@ -626,7 +648,7 @@ export default function AdminDashboard() {
                   <input 
                     type="number" 
                     className="form-input" 
-                    value={stats?.service_fee || 20} 
+                    value={stats?.service_fee ?? 20} 
                     min="0" 
                     onChange={(e) => setStats({...stats, service_fee: e.target.value})}
                   />
@@ -651,6 +673,64 @@ export default function AdminDashboard() {
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '1rem' }}>
                 This fee is added to bookings AFTER all discounts. Turf owners cannot change this.
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════ PAYOUTS ═══════ */}
+        {activeTab === 'payouts' && (
+          <div>
+            <div style={{ overflowX: 'auto' }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Turf</th>
+                    <th>Owner</th>
+                    <th>Total Earnings</th>
+                    <th>Commission</th>
+                    <th>Owner Payout</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payouts.map((p, idx) => (
+                    <tr key={idx}>
+                      <td style={{ fontWeight: 600 }}>{formatDate(p.date)}</td>
+                      <td>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.turf_name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>ID: #{p.turf_id}</div>
+                      </td>
+                      <td>{p.owner_name}</td>
+                      <td style={{ fontWeight: 600 }}>{formatPrice(p.total_earnings)}</td>
+                      <td style={{ color: 'var(--gold-400)', fontWeight: 600 }}>{formatPrice(p.commission_amount)}</td>
+                      <td style={{ color: 'var(--emerald-400)', fontWeight: 800 }}>{formatPrice(p.owner_payout)}</td>
+                      <td>
+                        {p.status === 'paid' ? (
+                          <span className="status-badge status-confirmed" title={`Paid at: ${p.paid_at ? new Date(p.paid_at).toLocaleString() : 'N/A'}`}>Paid</span>
+                        ) : (
+                          <span className="status-badge status-pending">Not Paid</span>
+                        )}
+                      </td>
+                      <td>
+                        <button 
+                          className={`btn btn-sm ${p.status === 'paid' ? 'btn-secondary' : 'btn-primary'}`}
+                          onClick={() => togglePayoutStatus(p.turf_id, p.date, p.status)}
+                        >
+                          {p.status === 'paid' ? 'Mark as Not Paid' : 'Mark as Paid'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {payouts.length === 0 && (
+                <div className="empty-state">
+                  <div className="empty-icon">💸</div>
+                  <h3>No payouts available</h3>
+                </div>
+              )}
             </div>
           </div>
         )}

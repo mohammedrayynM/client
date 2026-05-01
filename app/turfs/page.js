@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect, Suspense, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import TurfCard from '@/components/TurfCard';
+import LocationBar from '@/components/LocationBar';
 import { apiGet } from '@/lib/api';
 import { SPORTS } from '@/lib/constants';
 
@@ -17,19 +18,32 @@ function TurfsPageContent() {
   const [activeSport, setActiveSport] = useState(searchParams.get('sport') || 'all');
   const [searchQuery, setSearchQuery] = useState('');
   const [usingFallback, setUsingFallback] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
 
+  // Initial load based on URL params
+  useEffect(() => {
+    const lat = searchParams.get('lat');
+    const lng = searchParams.get('lng');
+    
+    if (lat && lng && !userLocation) {
+      setUserLocation({ latitude: lat, longitude: lng });
+    }
+  }, [searchParams]);
+
+  // Load turfs when filters or location changes
   useEffect(() => {
     loadTurfs();
-  }, [activeSport, searchParams]);
+  }, [activeSport, userLocation]);
 
-  async function loadTurfs() {
+  const loadTurfs = async () => {
     setLoading(true);
     setUsingFallback(false);
     try {
-      const lat = searchParams.get('lat');
-      const lng = searchParams.get('lng');
-      
       let query = `?sport=${activeSport !== 'all' ? activeSport : ''}`;
+      
+      const lat = userLocation?.latitude || searchParams.get('lat');
+      const lng = userLocation?.longitude || searchParams.get('lng');
+
       if (lat && lng) {
         query += `&lat=${lat}&lng=${lng}&radius=100`; // Search within 100km
       }
@@ -51,12 +65,17 @@ function TurfsPageContent() {
     } finally {
       setLoading(false);
     }
-  }
+  };
+
+  const handleLocationDetected = useCallback((location) => {
+    setUserLocation(location);
+  }, []);
 
   const filteredTurfs = searchQuery
     ? turfs.filter(t =>
         t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        t.location.toLowerCase().includes(searchQuery.toLowerCase())
+        t.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        t.sport_type.toLowerCase().includes(searchQuery.toLowerCase())
       )
     : turfs;
 
@@ -75,12 +94,14 @@ function TurfsPageContent() {
             </p>
           </div>
 
+          <LocationBar onLocationDetected={handleLocationDetected} />
+
           {/* Search Bar */}
-          <div className="search-bar" id="turf-search">
+          <div className="search-bar" id="turf-search" style={{ marginTop: '2rem' }}>
             <span className="search-icon">🔍</span>
             <input
               type="text"
-              placeholder="Search by name or location..."
+              placeholder="Search by name, location, or sport..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -100,6 +121,9 @@ function TurfsPageContent() {
                   {sport.emoji} {sport.label}
                 </option>
               ))}
+              {activeSport !== 'all' && !SPORTS[activeSport] && (
+                <option value={activeSport}>🏟️ {activeSport.charAt(0).toUpperCase() + activeSport.slice(1)}</option>
+              )}
             </select>
           </div>
 
@@ -110,6 +134,23 @@ function TurfsPageContent() {
             </div>
           ) : filteredTurfs.length > 0 ? (
             <>
+              {usingFallback && (
+                <div style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid var(--gold-500)',
+                  padding: '1rem',
+                  borderRadius: 'var(--radius-md)',
+                  marginBottom: '2rem',
+                  color: 'var(--text-primary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <span>⚠️</span>
+                  <span>No turfs found near your current location. Showing all available turfs instead.</span>
+                </div>
+              )}
+              
               <p style={{
                 color: 'var(--text-muted)',
                 marginBottom: '1.5rem',
@@ -117,10 +158,12 @@ function TurfsPageContent() {
               }}>
                 Showing {filteredTurfs.length} turf{filteredTurfs.length !== 1 ? 's' : ''}
                 {activeSport !== 'all' ? ` for ${SPORTS[activeSport]?.label || activeSport}` : ''}
+                {!usingFallback && userLocation ? ' near you' : ''}
               </p>
+              
               <div className="turf-grid">
                 {filteredTurfs.map(turf => (
-                  <TurfCard key={turf.id} turf={turf} />
+                  <TurfCard key={turf.id} turf={turf} userLocation={userLocation} />
                 ))}
               </div>
             </>

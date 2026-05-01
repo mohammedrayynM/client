@@ -427,14 +427,23 @@ export default function OwnerDashboard() {
                         value={turfForm.name} onChange={(e) => setTurfForm({ ...turfForm, name: e.target.value })} required />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Sport Type *</label>
-                      <select className="form-input" value={turfForm.sport_type}
-                        onChange={(e) => setTurfForm({ ...turfForm, sport_type: e.target.value })}>
+                      <label className="form-label">Sport Type / Play Zone *</label>
+                      <select className="form-input" 
+                        value={['cricket', 'football', 'badminton', 'tennis', 'basketball', 'volleyball', 'box cricket'].includes(turfForm.sport_type?.toLowerCase()) ? turfForm.sport_type.toLowerCase() : 'custom'}
+                        onChange={(e) => setTurfForm({ ...turfForm, sport_type: e.target.value === 'custom' ? '' : e.target.value })}>
                         <option value="cricket">Cricket</option>
                         <option value="football">Football</option>
                         <option value="badminton">Badminton</option>
                         <option value="tennis">Tennis</option>
+                        <option value="basketball">Basketball</option>
+                        <option value="volleyball">Volleyball</option>
+                        <option value="box cricket">Box Cricket</option>
+                        <option value="custom">+ Add New Sport / Custom Play Zone</option>
                       </select>
+                      {!['cricket', 'football', 'badminton', 'tennis', 'basketball', 'volleyball', 'box cricket'].includes(turfForm.sport_type?.toLowerCase()) && (
+                        <input type="text" className="form-input" style={{ marginTop: '0.5rem' }} placeholder="Enter custom sport or play zone (e.g. Skating Arena)" 
+                          value={turfForm.sport_type} onChange={(e) => setTurfForm({ ...turfForm, sport_type: e.target.value })} required />
+                      )}
                     </div>
                   </div>
                   <div className="grid-2">
@@ -454,17 +463,104 @@ export default function OwnerDashboard() {
                     <input type="text" className="form-input" placeholder="Complete address for customers"
                       value={turfForm.address} onChange={(e) => setTurfForm({ ...turfForm, address: e.target.value })} required />
                   </div>
-                  <div className="grid-2">
-                    <div className="form-group">
-                      <label className="form-label">Latitude (Optional)</label>
-                      <input type="number" step="any" className="form-input" placeholder="e.g. 13.0827"
-                        value={turfForm.latitude} onChange={(e) => setTurfForm({ ...turfForm, latitude: e.target.value })} />
+                  <div className="form-group" style={{ marginBottom: '1rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '10px' }}>
+                      <label className="form-label" style={{ marginBottom: 0 }}>Map Coordinates *</label>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <button 
+                          type="button" 
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            const query = prompt("Enter a place name or address to search (e.g., 'Marina Beach, Chennai'):");
+                            if (!query) return;
+                            
+                            const btn = document.getElementById('search-loc-btn');
+                            const originalText = btn.innerHTML;
+                            btn.innerHTML = 'Searching...';
+                            
+                            fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
+                              .then(res => res.json())
+                              .then(data => {
+                                if (data && data.length > 0) {
+                                  const place = data[0];
+                                  setTurfForm(prev => ({ 
+                                    ...prev, 
+                                    latitude: parseFloat(place.lat).toFixed(6), 
+                                    longitude: parseFloat(place.lon).toFixed(6),
+                                    location: prev.location || place.display_name.split(',')[0],
+                                    address: prev.address || place.display_name
+                                  }));
+                                  alert(`Found: ${place.display_name}`);
+                                } else {
+                                  alert("Could not find coordinates for that location. Try being more specific.");
+                                }
+                                btn.innerHTML = originalText;
+                              })
+                              .catch(err => {
+                                alert("Error searching for location.");
+                                btn.innerHTML = originalText;
+                              });
+                          }}
+                          id="search-loc-btn"
+                        >
+                          🌍 Search Location
+                        </button>
+
+                        <button 
+                          type="button" 
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            if (!navigator.geolocation) {
+                              alert("Geolocation is not supported by your browser");
+                              return;
+                            }
+                            const btn = document.getElementById('detect-btn');
+                            btn.innerHTML = 'Detecting...';
+                            navigator.geolocation.getCurrentPosition(
+                              async (pos) => {
+                                const lat = pos.coords.latitude;
+                                const lng = pos.coords.longitude;
+                                
+                                // Try to reverse geocode to get city
+                                try {
+                                  const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+                                  const data = await res.json();
+                                  const city = data.address?.city || data.address?.state_district || data.address?.town;
+                                  const address = data.display_name;
+                                  
+                                  setTurfForm(prev => ({ 
+                                    ...prev, 
+                                    latitude: lat, 
+                                    longitude: lng,
+                                    location: prev.location || city || '',
+                                    address: prev.address || address || ''
+                                  }));
+                                } catch (err) {
+                                  setTurfForm(prev => ({ ...prev, latitude: lat, longitude: lng }));
+                                }
+                                btn.innerHTML = '📍 Location Detected';
+                              },
+                              (err) => {
+                                alert("Please enable location access to use this feature");
+                                btn.innerHTML = '📍 Use My Current Location';
+                              }
+                            );
+                          }}
+                          id="detect-btn"
+                        >
+                          📍 Use My Current Location
+                        </button>
+                      </div>
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">Longitude (Optional)</label>
-                      <input type="number" step="any" className="form-input" placeholder="e.g. 80.2707"
-                        value={turfForm.longitude} onChange={(e) => setTurfForm({ ...turfForm, longitude: e.target.value })} />
+                    <div className="grid-2">
+                      <input type="number" step="any" className="form-input" placeholder="Latitude (e.g. 13.0827)"
+                        value={turfForm.latitude} onChange={(e) => setTurfForm({ ...turfForm, latitude: e.target.value })} required />
+                      <input type="number" step="any" className="form-input" placeholder="Longitude (e.g. 80.2707)"
+                        value={turfForm.longitude} onChange={(e) => setTurfForm({ ...turfForm, longitude: e.target.value })} required />
                     </div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                      You must provide precise coordinates. Use <strong>"Search Location"</strong> to search by name (e.g., Google Maps place name), or use <strong>"Use My Current Location"</strong> if you are physically at the turf.
+                    </p>
                   </div>
                   <div className="grid-2">
                     <div className="form-group">
@@ -997,6 +1093,7 @@ export default function OwnerDashboard() {
                   <tr>
                     <th>Date</th>
                     <th>Net Earnings</th>
+                    <th>Payment Status</th>
                     <th>Progress Bar</th>
                   </tr>
                 </thead>
@@ -1006,12 +1103,19 @@ export default function OwnerDashboard() {
                       <tr key={i}>
                         <td style={{ fontWeight: 600 }}>{new Date(d.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}</td>
                         <td style={{ color: 'var(--emerald-400)', fontWeight: 800 }}>{formatPrice(d.earnings)}</td>
-                        <td style={{ width: '40%' }}>
+                        <td>
+                          {d.status === 'paid' ? (
+                            <span className="status-badge status-confirmed" title={`Paid at: ${d.paid_at ? new Date(d.paid_at).toLocaleString() : 'N/A'}`}>Paid</span>
+                          ) : (
+                            <span className="status-badge status-pending">Not Paid</span>
+                          )}
+                        </td>
+                        <td style={{ width: '30%' }}>
                           <div style={{ background: 'var(--bg-secondary)', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
                             <div style={{ 
                               background: 'var(--emerald-500)', 
                               height: '100%', 
-                              width: `${Math.min(100, (d.earnings / (earnings.monthly / (earnings.daily.length || 1) || 1)) * 100)}%` 
+                              width: `${Math.min(100, (d.earnings / Math.max(1000, ...earnings.daily.map(x => x.earnings))) * 100)}%` 
                             }}></div>
                           </div>
                         </td>

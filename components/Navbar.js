@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import LocationBar from './LocationBar';
 
 export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -46,6 +47,8 @@ export default function Navbar() {
           <li><Link href="/contact" onClick={() => setMenuOpen(false)}>Contact</Link></li>
           {user && <li><Link href="/profile" onClick={() => setMenuOpen(false)}>My Bookings</Link></li>}
         </ul>
+
+        <LocationBar compact={true} />
 
         <div className="navbar-actions">
           {user ? (
