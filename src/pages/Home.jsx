@@ -11,7 +11,7 @@ import { setJsonLd, setPageMeta } from '@/lib/seo';
 import { fetchActivities } from '@/services/activities';
 
 const heroImages = [
-  '/images/hero/image.png',
+  '/images/hero/image.jpg',
   '/images/hero/image%202%20amusement.jpeg',
   '/images/hero/image%203%20pickle%20ball.jpeg'
 ];
@@ -31,30 +31,31 @@ export default function HomePage() {
 
   const FAQS = [
     {
-      q: 'How do I book a turf on Book Arena?',
-      a: 'Open the Turfs page, choose a venue, select your date and time slot, then pay securely to confirm your booking.'
+      q: 'How do I book a sports turf in Chennai on Book Arena?',
+      a: 'Browse verified sports venues across Chennai and Tamil Nadu, select your preferred sport (cricket, football, badminton, pickleball), choose your date and slot, and confirm instantly with secure payment.'
     },
     {
-      q: 'Can I find players for my match?',
-      a: 'Yes. After booking a slot, you can raise a “Find Players” request so nearby users can join your match.'
+      q: 'Can I book amusement park and water park tickets on Book Arena?',
+      a: 'Yes, Book Arena offers online ticket booking for top amusement parks, water theme parks, and recreation centers with instant digital passes.'
     },
     {
-      q: 'How do I join a match from Find Players?',
-      a: 'Go to Find Players, open a match, pick your role, and pay the contribution (if required) to confirm your slot.'
+      q: 'Can I find players to join my match if I am short of teammates?',
+      a: 'Yes. After reserving your slot, use the "Need Players for This Slot" feature or post in the Find Players hub. Nearby players can join, select their roles, and contribute their share of the slot fee.'
     },
     {
-      q: 'Do I get a receipt after payment?',
-      a: 'Yes. You will receive an email confirmation and an in-app receipt in your profile dashboard after successful payment.'
+      q: 'Are online payments secure and do I receive an instant booking receipt?',
+      a: 'All transactions are protected by Razorpay with bank-grade encryption. Once payment is confirmed, an instant digital receipt and slot confirmation are delivered via email and saved to your profile dashboard.'
     }
   ];
 
   useEffect(() => {
-    // Page-specific SEO meta (SPA-safe)
+    // Page-specific Advanced SEO & AEO meta
     setPageMeta({
-      title: 'Book Arena — Book Sports Turfs Online',
-      description: 'Find and book the best sports turfs near you. Cricket, Football, Badminton, Tennis and more. Instant booking with secure payment.',
-      keywords: 'sports booking, turf booking, cricket turf, football ground, badminton court, online booking, book arena',
-      canonicalUrl: 'https://bookarena.in/'
+      title: 'Book Arena — Book Sports Turfs in Chennai & Amusement Parks Online',
+      description: 'Find and book top-rated sports turfs in Chennai, Bangalore & Tamil Nadu. Book box cricket, football grounds, badminton courts, pickleball & amusement park passes instantly with Book Arena.',
+      keywords: 'turf in chennai, book amusement park, sports turf booking chennai, box cricket chennai, football turf chennai, badminton court booking, online turf booking, cricket ground rental, water park tickets, book arena',
+      canonicalUrl: 'https://bookarena.in/',
+      imageUrl: 'https://bookarena.in/images/hero/image.jpg'
     });
 
     // Organization + FAQ schema
