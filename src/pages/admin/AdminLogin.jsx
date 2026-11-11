@@ -32,7 +32,7 @@ export default function AdminLoginPage() {
       router('/admin/dashboard');
     } catch (err) {
       // Demo Fallback to allow viewing the UI without the backend running
-      if (form.username === 'admin' && form.password === 'admin123') {
+      if (form.username === 'admin' && form.password === 'mr0962') {
         localStorage.setItem('token', 'demo-admin-token');
         localStorage.setItem('admin', JSON.stringify({ id: 1, username: 'admin' }));
         router('/admin/dashboard');

@@ -561,13 +561,12 @@ export default function ActivityBooking() {
                           <p className="text-xs text-slate-400 mb-2">{t.description}</p>
                         )}
 
-                        <div className="flex items-center gap-3 text-xs">
-                          <span className="text-emerald-400 font-extrabold text-base">₹{t.price}</span>
-                          <span className="text-slate-500">•</span>
+                        <div className="flex items-baseline gap-3 text-xs flex-wrap">
+                          <span className="text-emerald-400 font-extrabold text-base">₹{t.price} <span className="text-xs font-normal text-slate-400">/ ticket</span></span>
                           {isSoldOut ? (
-                            <span className="text-rose-400 font-bold">Sold Out</span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">Sold Out</span>
                           ) : (
-                            <span className="text-slate-400">{remaining} available today</span>
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">{remaining} available</span>
                           )}
                         </div>
                       </div>
@@ -650,10 +649,10 @@ export default function ActivityBooking() {
             {isCheckoutStep && <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl">
               <h2 className="text-base font-bold text-white flex items-center gap-2 mb-2">
                 <User className="w-5 h-5 text-emerald-400" />
-                Customer Contact Details
+                Complete Your Booking
               </h2>
               <p className="text-slate-400 text-xs mb-4">
-                Your QR tickets and booking confirmation will be sent to these details.
+                Confirm your contact details. Your verified QR tickets will be issued immediately upon payment.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -794,6 +793,23 @@ export default function ActivityBooking() {
                     </div>
                   )}
 
+                  {preview.showFeeAtCheckout !== false && (Number(preview.serviceFee || preview.service_fee) > 0 || Number(preview.serviceFeeTax || preview.service_fee_tax) > 0) && (
+                    <>
+                      {Number(preview.serviceFee || preview.service_fee) > 0 && (
+                        <div className="flex justify-between text-slate-300">
+                          <span>Customer Service Fee</span>
+                          <span>₹{preview.serviceFee || preview.service_fee}</span>
+                        </div>
+                      )}
+                      {Number(preview.serviceFeeTax || preview.service_fee_tax) > 0 && (
+                        <div className="flex justify-between text-slate-300">
+                          <span>Tax on Service Fee</span>
+                          <span>₹{preview.serviceFeeTax || preview.service_fee_tax}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+
                   <div className="pt-3 border-t border-slate-800 flex justify-between items-center text-sm font-black text-white">
                     <span>Total Amount</span>
                     <span className="text-xl text-emerald-400">
@@ -839,7 +855,7 @@ export default function ActivityBooking() {
                 ) : (
                   <>
                     <Lock className="w-4 h-4" />
-                    Pay & Confirm Booking
+                    PAY NOW
                   </>
                 )}
               </button> : <button

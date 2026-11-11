@@ -555,10 +555,12 @@ export default function OwnerDashboard() {
       }
 
       let earningsData = null;
-      try {
-        earningsData = await apiGet(buildOwnerEarningsUrl(initialTurfId || ''));
-      } catch (err) {
-        setDashboardWarning(err.message || 'Earnings are temporarily unavailable.');
+      if (initialTurfId) {
+        try {
+          earningsData = await apiGet(buildOwnerEarningsUrl(initialTurfId));
+        } catch (err) {
+          setDashboardWarning(err.message || 'Earnings are temporarily unavailable.');
+        }
       }
       setEarnings(earningsData);
     } catch (err) {
@@ -1038,6 +1040,24 @@ export default function OwnerDashboard() {
 
   async function handleBulkBlock() {
     if (selectedSlots.length === 0) return;
+    const turf = turfs.find(t => String(t.id) === String(blockForm.turf_id));
+    const court = slotCourts.find(c => String(c.id) === String(blockForm.court_id));
+    const turfName = turf?.name || 'Selected Venue';
+    const courtName = court?.name || 'All courts / whole venue';
+    const formattedSlots = selectedSlots.map(convertSlotTo12Hour).join('\n• ');
+
+    const confirmMsg = `CONFIRM BLOCK:
+• Venue: ${turfName}
+• Court: ${courtName}
+• Date: ${blockForm.block_date}
+• Slots (${selectedSlots.length}):
+• ${formattedSlots}
+
+Customers will NOT be able to book these slots while blocked.
+Do you want to proceed?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
     try {
       await apiPost(`/owners/turfs/${blockForm.turf_id}/block-slots/bulk`, {
         court_id: blockForm.court_id || undefined,
@@ -1045,7 +1065,7 @@ export default function OwnerDashboard() {
         time_slots: selectedSlots,
         reason: blockForm.reason || 'Maintenance'
       });
-      alert('Slots blocked successfully!');
+      alert(`${selectedSlots.length} slot(s) blocked successfully!`);
       setSelectedSlots([]);
       fetchManagedSlots();
     } catch (err) {
@@ -1055,13 +1075,31 @@ export default function OwnerDashboard() {
 
   async function handleBulkUnblock() {
     if (selectedSlots.length === 0) return;
+    const turf = turfs.find(t => String(t.id) === String(blockForm.turf_id));
+    const court = slotCourts.find(c => String(c.id) === String(blockForm.court_id));
+    const turfName = turf?.name || 'Selected Venue';
+    const courtName = court?.name || 'All courts / whole venue';
+    const formattedSlots = selectedSlots.map(convertSlotTo12Hour).join('\n• ');
+
+    const confirmMsg = `CONFIRM UNBLOCK:
+• Venue: ${turfName}
+• Court: ${courtName}
+• Date: ${blockForm.block_date}
+• Slots (${selectedSlots.length}):
+• ${formattedSlots}
+
+These slots will immediately open for customer booking.
+Do you want to proceed?`;
+
+    if (!window.confirm(confirmMsg)) return;
+
     try {
       await apiPost(`/owners/turfs/${blockForm.turf_id}/unblock-slots/bulk`, {
         court_id: blockForm.court_id || undefined,
         block_date: blockForm.block_date,
         time_slots: selectedSlots
       });
-      alert('Slots unblocked successfully!');
+      alert(`${selectedSlots.length} slot(s) unblocked successfully!`);
       setSelectedSlots([]);
       fetchManagedSlots();
     } catch (err) {
@@ -1366,7 +1404,7 @@ export default function OwnerDashboard() {
   const allOwnerVenues = venueSummary?.venues && venueSummary.venues.length > 0 ? venueSummary.venues : turfs;
   const getVenueKey = (venue) => `${venue?.is_activity ? 'activity' : 'turf'}:${venue?.id}`;
   const activeVenue = allOwnerVenues.find(v => getVenueKey(v) === selectedVenueId)
-    || allOwnerVenues.find(v => !v.is_activity)
+    || (venueSummary?.primaryVenue ? allOwnerVenues.find(v => getVenueKey(v) === getVenueKey(venueSummary.primaryVenue)) : null)
     || allOwnerVenues[0];
   const rawVenueCategory = activeVenue?.category || activeVenue?.categories?.[0] || 'sports_court';
   const categoryAliases = {
@@ -3044,10 +3082,10 @@ export default function OwnerDashboard() {
                     <span>{selectedSlots.length} slot(s) selected</span>
                     <div className="floating-action-bar-actions">
                       {hasAvailableSelected && (
-                        <button onClick={handleBulkBlock} className="btn btn-danger">Block Selected</button>
+                        <button onClick={handleBulkBlock} className="btn btn-danger">Block Selected Slots</button>
                       )}
                       {hasBlockedSelected && (
-                        <button onClick={handleBulkUnblock} className="btn btn-secondary">Unblock Selected</button>
+                        <button onClick={handleBulkUnblock} className="btn btn-secondary">Unblock Selected Slots</button>
                       )}
                     </div>
                   </div>

@@ -906,17 +906,22 @@ export default function TurfDetailPage() {
           },
           theme: { color: '#10b981' }, // Emerald-500
           modal: {
-            ondismiss: function() {
-              console.log('👋 Checkout modal closed');
+            ondismiss: async function() {
+              console.log('👋 Checkout modal closed — reconciling payment status...');
               setBookingLoading(false);
+              // Call cancel-pending to reconcile with Razorpay; it may confirm the booking if captured
+              try {
+                await apiPost('/bookings/cancel-pending', { booking_id: data.booking_id });
+              } catch (e) { /* non-critical — the cleanup job handles stragglers */ }
               router(`/payment-cancelled?booking_id=${encodeURIComponent(data.booking_id)}&order_id=${encodeURIComponent(data.order_id)}`);
             }
           }
       };
       const rzp = new window.Razorpay(options);
-      rzp.on('payment.failed', function(response) {
-        router(`/payment-failed?booking_id=${encodeURIComponent(data.booking_id)}&order_id=${encodeURIComponent(data.order_id)}&payment_id=${encodeURIComponent(response?.error?.metadata?.payment_id || '')}`);
+      rzp.on('payment.failed', async function(response) {
         setBookingLoading(false);
+        try { await apiPost('/bookings/cancel-pending', { booking_id: data.booking_id }); } catch (e) { /* non-critical */ }
+        router(`/payment-failed?booking_id=${encodeURIComponent(data.booking_id)}&order_id=${encodeURIComponent(data.order_id)}&payment_id=${encodeURIComponent(response?.error?.metadata?.payment_id || '')}`);
       });
       rzp.open();
     } catch (err) {
@@ -1379,7 +1384,70 @@ export default function TurfDetailPage() {
                               router('/login');
                               return;
                             }
-                            alert('Subscription payment flow coming soon! Contact owner for manual registration.');
+                            (async () => {
+                              try {
+                                const purRes = await apiPost('/subscriptions/purchase', { subscription_offer_id: plan.id });
+                                if (purRes.skipPayment) {
+                                  alert('Subscription activated! Your slots are reserved.');
+                                  window.location.reload();
+                                  return;
+                                }
+                                const { loadRazorpay: loadRzp } = await import('../lib/razorpay').catch(() => ({
+                                  loadRazorpay: () => new Promise((res, rej) => {
+                                    if (window.Razorpay) return res(true);
+                                    const s = document.createElement('script');
+                                    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+                                    s.onload = () => res(true); s.onerror = () => rej(new Error('Failed to load Razorpay'));
+                                    document.body.appendChild(s);
+                                  })
+                                }));
+                                await (typeof loadRzp === 'function' ? loadRzp() : new Promise((res, rej) => {
+                                  if (window.Razorpay) return res(true);
+                                  const s = document.createElement('script');
+                                  s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+                                  s.onload = () => res(true); s.onerror = () => rej(new Error('Failed to load Razorpay'));
+                                  document.body.appendChild(s);
+                                }));
+                                await new Promise((resolve, reject) => {
+                                  const rzp = new window.Razorpay({
+                                    key: purRes.key_id || process.env.REACT_APP_RAZORPAY_KEY_ID,
+                                    amount: purRes.amount,
+                                    currency: purRes.currency || 'INR',
+                                    name: 'Book Arena',
+                                    description: `Subscription: ${plan.name}`,
+                                    order_id: purRes.order_id,
+                                    handler: async function(response) {
+                                      try {
+                                        await apiPost('/subscriptions/verify', {
+                                          razorpay_order_id: response.razorpay_order_id,
+                                          razorpay_payment_id: response.razorpay_payment_id,
+                                          razorpay_signature: response.razorpay_signature,
+                                        });
+                                        alert('Subscription activated! Your slots are reserved. Check My Subscriptions.');
+                                        window.location.reload();
+                                        resolve();
+                                      } catch (e) { reject(e); }
+                                    },
+                                    prefill: { name: user?.name || '', email: user?.email || '' },
+                                    theme: { color: '#10b981' },
+                                    modal: {
+                                      ondismiss: async () => {
+                                        try { await apiPost('/subscriptions/cancel-payment', { razorpay_order_id: purRes.order_id }); } catch (_) {}
+                                        resolve();
+                                      }
+                                    }
+                                  });
+                                  rzp.on('payment.failed', async () => {
+                                    try { await apiPost('/subscriptions/cancel-payment', { razorpay_order_id: purRes.order_id, failed: true }); } catch (_) {}
+                                    alert('Payment failed. Your subscription was not activated. Please try again.');
+                                    resolve();
+                                  });
+                                  rzp.open();
+                                });
+                              } catch (err) {
+                                alert(err?.response?.data?.error || err.message || 'Could not start subscription. Please try again.');
+                              }
+                            })();
                           }}
                         >
                           Book Fixed Slot
@@ -1899,6 +1967,27 @@ export default function TurfDetailPage() {
                             -{formatPrice(pricingBreakdown.discountAmount)} OFF
                           </span>
                         </div>
+                      )}
+
+                      {pricingBreakdown.showFeeAtCheckout !== false && (pricingBreakdown.serviceFee > 0 || pricingBreakdown.serviceFeeTax > 0) && (
+                        <>
+                          {pricingBreakdown.serviceFee > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Customer Service Fee</span>
+                              <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem' }}>
+                                {formatPrice(pricingBreakdown.serviceFee)}
+                              </span>
+                            </div>
+                          )}
+                          {pricingBreakdown.serviceFeeTax > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Tax on Service Fee</span>
+                              <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem' }}>
+                                {formatPrice(pricingBreakdown.serviceFeeTax)}
+                              </span>
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {pricingBreakdown.contributionOffset > 0 && (

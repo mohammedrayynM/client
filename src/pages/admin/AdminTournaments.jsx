@@ -9,10 +9,17 @@ export default function AdminTournaments() {
   const [sportFilter, setSportFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  // Settings state (Admin fee)
-  const [settings, setSettings] = useState({ fee_amount: 0, is_active: true });
+  // Settings state (Admin fee & duration rules)
+  const [settings, setSettings] = useState({ fee_amount: 0, is_active: true, max_duration_days: 30, min_duration_days: 1 });
   const [showFeeModal, setShowFeeModal] = useState(false);
-  const [feeForm, setFeeForm] = useState({ fee_amount: '0', is_active: true });
+  const [feeForm, setFeeForm] = useState({
+    fee_mode: 'paid', // 'free' | 'paid'
+    fee_amount: '0',
+    is_active: true,
+    creation_enabled: true,
+    min_duration_days: '1',
+    max_duration_days: '30'
+  });
   const [savingFee, setSavingFee] = useState(false);
 
   const loadAdminTournaments = async () => {
@@ -31,9 +38,14 @@ export default function AdminTournaments() {
       if (res.success) setTournaments(res.tournaments || []);
       if (setRes.success && setRes.settings) {
         setSettings(setRes.settings);
+        const isFree = !setRes.settings.is_active || Number(setRes.settings.fee_amount) === 0;
         setFeeForm({
+          fee_mode: isFree ? 'free' : 'paid',
           fee_amount: String(setRes.settings.fee_amount || 0),
-          is_active: Boolean(setRes.settings.is_active)
+          is_active: Boolean(setRes.settings.is_active),
+          creation_enabled: Boolean(setRes.settings.creation_enabled ?? true),
+          min_duration_days: String(setRes.settings.min_duration_days || 1),
+          max_duration_days: String(setRes.settings.max_duration_days || 30),
         });
       }
     } catch (err) {
@@ -49,28 +61,35 @@ export default function AdminTournaments() {
 
   const handleSaveFee = async (e) => {
     e.preventDefault();
-    const feeAmount = Number(feeForm.fee_amount);
-    if (!feeForm.fee_amount.trim() || !Number.isFinite(feeAmount) || feeAmount < 0 || feeAmount > 99999999.99) {
+    const isFree = feeForm.fee_mode === 'free';
+    const feeAmount = isFree ? 0 : Number(feeForm.fee_amount);
+    if (!isFree && (!feeForm.fee_amount.trim() || !Number.isFinite(feeAmount) || feeAmount < 0 || feeAmount > 99999999.99)) {
       alert('Enter a valid non-negative fee amount.');
       return;
     }
+    const minD = parseInt(feeForm.min_duration_days, 10) || 1;
+    const maxD = parseInt(feeForm.max_duration_days, 10) || 30;
+    if (minD < 1 || maxD < minD) {
+      alert('Maximum duration must be greater than or equal to minimum duration.');
+      return;
+    }
+
     setSavingFee(true);
     try {
       const res = await apiPost('/admin-tournaments/settings', {
         fee_amount: feeAmount,
-        is_active: feeForm.is_active
+        is_active: !isFree,
+        creation_enabled: feeForm.creation_enabled,
+        min_duration_days: minD,
+        max_duration_days: maxD,
       });
-      if (res.success) {
-        setSettings({
-          ...settings,
-          fee_amount: feeAmount,
-          is_active: feeForm.is_active
-        });
+      if (res.success && res.settings) {
+        setSettings(res.settings);
         setShowFeeModal(false);
-        alert('Tournament creation fee settings updated!');
+        alert('Tournament creation fee and duration rules updated successfully!');
       }
     } catch (e) {
-      alert('Failed to save settings');
+      alert('Failed to save tournament settings: ' + (e?.response?.data?.error || e.message));
     } finally {
       setSavingFee(false);
     }
@@ -104,9 +123,17 @@ export default function AdminTournaments() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="bg-slate-950 px-4 py-2 rounded-xl border border-slate-800 text-xs">
-            <span className="text-slate-400">Creation Fee: </span>
-            <span className="font-bold text-emerald-400">{settings.currency_code || 'INR'} {settings.fee_amount}</span>
+          <div className="flex items-center gap-2">
+            <div className="bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 text-xs">
+              <span className="text-slate-400">Creation Fee: </span>
+              <span className={`font-bold ${!settings.is_active || Number(settings.fee_amount) === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
+                {!settings.is_active || Number(settings.fee_amount) === 0 ? 'Free (No Charges)' : `${settings.currency_code || 'INR'} ${settings.fee_amount}`}
+              </span>
+            </div>
+            <div className="hidden sm:block bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 text-xs">
+              <span className="text-slate-400">Max Duration: </span>
+              <span className="font-bold text-white">{settings.max_duration_days || 30} days</span>
+            </div>
           </div>
 
           <button
@@ -211,40 +238,128 @@ export default function AdminTournaments() {
         </div>
       </div>
 
-      {/* Admin Fee Modal */}
+      {/* Admin Fee & Duration Settings Modal */}
       {showFeeModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4">
-            <h3 className="text-base font-bold text-white">Tournament Admin Fee Settings</h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-5 shadow-2xl">
+            <div className="border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <DollarSign className="w-4 h-4 text-emerald-400" /> Tournament Creation Fee & Duration Rules
+              </h3>
+              <p className="text-2xs text-slate-400 mt-1">Configure global fee policies, duration caps, and host access rules.</p>
+            </div>
+
             <form onSubmit={handleSaveFee} className="space-y-4 text-xs">
+              {/* Fee Mode: No Charges vs Paid */}
               <div>
-                <label className="block text-slate-300 mb-1 font-semibold">Tournament Creation Fee ({settings.currency_code || 'INR'})</label>
-                <input
-                  type="number"
-                  required
-                  min="0"
-                  max="99999999.99"
-                  step="0.01"
-                  value={feeForm.fee_amount}
-                  onChange={(e) => setFeeForm({ ...feeForm, fee_amount: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white"
-                />
+                <label className="block text-slate-300 mb-2 font-semibold">Fee Mode for Hosts</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFeeForm({ ...feeForm, fee_mode: 'free', fee_amount: '0', is_active: false })}
+                    className={`p-3 rounded-xl border text-left transition-all ${feeForm.fee_mode === 'free' ? 'bg-emerald-950/60 border-emerald-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                  >
+                    <div className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${feeForm.fee_mode === 'free' ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                      No Charges (Free)
+                    </div>
+                    <p className="text-2xs text-slate-400 mt-1">Hosts create & publish tournaments with ₹0 fee. Razorpay gateway bypassed.</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setFeeForm({ ...feeForm, fee_mode: 'paid', is_active: true })}
+                    className={`p-3 rounded-xl border text-left transition-all ${feeForm.fee_mode === 'paid' ? 'bg-emerald-950/60 border-emerald-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'}`}
+                  >
+                    <div className="font-bold text-xs text-emerald-400 flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${feeForm.fee_mode === 'paid' ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+                      Paid Tournament Creation
+                    </div>
+                    <p className="text-2xs text-slate-400 mt-1">Hosts must pay the fixed admin creation fee via Razorpay before publishing.</p>
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* Fee Amount (Only if paid) */}
+              {feeForm.fee_mode === 'paid' && (
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">
+                    Fee Amount ({settings.currency_code || 'INR'})
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="99999999.99"
+                    step="1"
+                    value={feeForm.fee_amount}
+                    onChange={(e) => setFeeForm({ ...feeForm, fee_amount: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white font-mono text-sm"
+                    placeholder="e.g. 500"
+                  />
+                  <p className="text-2xs text-slate-500 mt-1">This amount is collected via Razorpay and verified by the backend.</p>
+                </div>
+              )}
+
+              {/* Duration Limits */}
+              <div className="grid grid-cols-2 gap-3 pt-1">
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">Min Duration (days)</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="365"
+                    value={feeForm.min_duration_days}
+                    onChange={(e) => setFeeForm({ ...feeForm, min_duration_days: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 mb-1 font-semibold">Max Duration (days)</label>
+                  <input
+                    type="number"
+                    required
+                    min="1"
+                    max="365"
+                    value={feeForm.max_duration_days}
+                    onChange={(e) => setFeeForm({ ...feeForm, max_duration_days: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-white"
+                  />
+                </div>
+              </div>
+              <p className="text-2xs text-slate-500">Host cannot schedule a tournament where (End Date - Start Date + 1) exceeds Max Duration.</p>
+
+              {/* Creation Enabled Toggle */}
+              <div className="flex items-center gap-2 pt-1 border-t border-slate-800">
                 <input
                   type="checkbox"
-                  id="feeActive"
-                  checked={feeForm.is_active}
-                  onChange={(e) => setFeeForm({ ...feeForm, is_active: e.target.checked })}
+                  id="creationEnabled"
+                  checked={feeForm.creation_enabled}
+                  onChange={(e) => setFeeForm({ ...feeForm, creation_enabled: e.target.checked })}
                   className="rounded bg-slate-950 border-slate-800 text-emerald-500"
                 />
-                <label htmlFor="feeActive" className="text-slate-300 font-semibold">Enable Creation Fee for Hosts</label>
+                <label htmlFor="creationEnabled" className="text-slate-300 font-semibold cursor-pointer">
+                  Allow new tournament creation for hosts
+                </label>
               </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button type="button" onClick={() => setShowFeeModal(false)} className="px-4 py-2 bg-slate-800 text-white rounded-lg">Cancel</button>
-                <button type="submit" disabled={savingFee} className="px-5 py-2 bg-emerald-600 text-white font-bold rounded-lg">{savingFee ? 'Saving...' : 'Save Settings'}</button>
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setShowFeeModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingFee}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-lg transition-colors"
+                >
+                  {savingFee ? 'Saving...' : 'Save Settings'}
+                </button>
               </div>
             </form>
           </div>

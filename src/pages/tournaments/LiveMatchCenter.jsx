@@ -4,11 +4,14 @@ import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { apiGet } from '@/lib/api';
 import { setPageMeta } from '@/lib/seo';
-import { Trophy, Radio, Clock, Shield, Award, Activity, ArrowLeft } from 'lucide-react';
+import { Trophy, Radio, Clock, Shield, Award, Activity, ArrowLeft, Target, Users } from 'lucide-react';
 
 export default function LiveMatchCenter() {
   const { slug, matchId } = useParams();
   const [matchData, setMatchData] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [cricket, setCricket] = useState(null);
+  const [clock, setClock] = useState(null);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
@@ -18,6 +21,9 @@ export default function LiveMatchCenter() {
       const res = await apiGet(`/tournament-matches/${matchId}/live`);
       if (res.success) {
         setMatchData(res.match);
+        setStats(res.stats || null);
+        setCricket(res.cricket || null);
+        setClock(res.clock || null);
         setEvents(res.events || []);
         setLastUpdated(new Date());
       }
@@ -31,16 +37,34 @@ export default function LiveMatchCenter() {
   useEffect(() => {
     fetchLiveMatchData();
 
-    // Setup SSE or safe polling fallback (every 4 seconds)
-    const interval = setInterval(fetchLiveMatchData, 4000);
-    return () => clearInterval(interval);
+    // Setup SSE stream for realtime updates
+    let es;
+    try {
+      es = new EventSource(`/api/tournament-matches/${matchId}/stream`);
+      es.onmessage = () => fetchLiveMatchData();
+      es.addEventListener('tournament_event', () => fetchLiveMatchData());
+      es.addEventListener('tournament_event_undo', () => fetchLiveMatchData());
+      es.addEventListener('tournament_status_change', () => fetchLiveMatchData());
+      es.onerror = () => {
+        // Fallback polling will handle if stream drops
+      };
+    } catch (e) {
+      console.warn('SSE connection failed, falling back to interval:', e);
+    }
+
+    // Safety polling fallback every 5s
+    const interval = setInterval(fetchLiveMatchData, 5000);
+    return () => {
+      clearInterval(interval);
+      if (es) es.close();
+    };
   }, [matchId]);
 
   useEffect(() => {
     if (matchData) {
       setPageMeta({
         title: `LIVE: ${matchData.team_a?.name || 'Team A'} vs ${matchData.team_b?.name || 'Team B'} — ${matchData.tournament_name}`,
-        description: `Follow live score updates, events timeline, and YouTube stream for ${matchData.tournament_name}.`
+        description: `Follow live score updates, ball-by-ball events timeline, and YouTube stream for ${matchData.tournament_name}.`
       });
     }
   }, [matchData]);
@@ -65,7 +89,7 @@ export default function LiveMatchCenter() {
       <div className="min-h-screen bg-slate-950 text-white flex flex-col">
         <Navbar />
         <div className="flex-grow flex items-center justify-center">
-          <div className="w-10 h-10 border-4 border-red-500 border-t-transparent rounded-full animate-spin" />
+          <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
         </div>
         <Footer />
       </div>
@@ -89,6 +113,17 @@ export default function LiveMatchCenter() {
   }
 
   const embedUrl = getYoutubeEmbedUrl(matchData.youtube_url);
+  const isCricket = (stats?.family === 'cricket') || (matchData.sport && matchData.sport.toLowerCase().includes('cricket'));
+  const teamAScore = stats?.a?.runs ?? stats?.a?.score ?? matchData.team_a_score ?? 0;
+  const teamBScore = stats?.b?.runs ?? stats?.b?.score ?? matchData.team_b_score ?? 0;
+  const teamAWickets = stats?.a?.wickets ?? 0;
+  const teamBWickets = stats?.b?.wickets ?? 0;
+  const teamAOvers = stats?.a?.overs || '0.0';
+  const teamBOvers = stats?.b?.overs || '0.0';
+  const currentBattingId = matchData.batting_team_id || cricket?.setup?.batting_team_id || stats?.cricket?.current?.batting_team_id;
+  const isTeamABatting = matchData.status === 'LIVE' && (!currentBattingId || Number(currentBattingId) === Number(matchData.team_a_id));
+  const isTeamBBatting = matchData.status === 'LIVE' && Number(currentBattingId) === Number(matchData.team_b_id);
+  const chase = cricket?.chase || stats?.cricket?.chase;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-white">
@@ -149,48 +184,123 @@ export default function LiveMatchCenter() {
               </div>
 
               {/* Main Scoreboard Display */}
-              <div className="flex items-center justify-between gap-4 my-4">
-                {/* Team A */}
-                <div className="flex-1 text-center">
-                  <div className="w-16 h-16 mx-auto mb-2 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center font-bold text-lg text-white">
-                    {matchData.team_a?.logo ? (
-                      <img src={matchData.team_a.logo} alt={matchData.team_a.name} className="w-full h-full rounded-2xl object-cover" />
-                    ) : (
-                      matchData.team_a?.name?.substring(0, 2).toUpperCase() || 'A'
-                    )}
+              <div className="space-y-4 my-2">
+                {/* Team A Row */}
+                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isTeamABatting ? 'bg-emerald-950/40 border-emerald-500/50' : 'bg-slate-950/60 border-slate-800'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-sm text-white overflow-hidden">
+                      {matchData.team_a?.logo ? (
+                        <img src={matchData.team_a.logo} alt={matchData.team_a.name} className="w-full h-full object-cover" />
+                      ) : (
+                        matchData.team_a?.name?.substring(0, 2).toUpperCase() || 'A'
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-white text-sm flex items-center gap-1.5">
+                        {matchData.team_a?.name || 'Team A'}
+                        {isTeamABatting && <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Batting" />}
+                      </h3>
+                      {isCricket && (
+                        <p className="text-2xs text-slate-400 font-medium">
+                          {teamAOvers} ov {stats?.a?.run_rate ? `· RR ${stats.a.run_rate}` : ''}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="font-extrabold text-white text-base truncate">{matchData.team_a?.name || 'Team A'}</h3>
+                  <div className="text-right">
+                    <span className="text-2xl font-black text-white font-mono">
+                      {teamAScore}{isCricket ? <span className="text-base text-slate-400 font-bold">/{teamAWickets}</span> : ''}
+                    </span>
+                  </div>
                 </div>
 
-                {/* Score Big Display */}
-                <div className="px-6 py-3 bg-slate-950/90 rounded-2xl border border-emerald-500/30 flex items-center gap-4 shadow-inner">
-                  <span className="text-4xl font-black text-emerald-400">{matchData.team_a_score}</span>
-                  <span className="text-slate-600 text-xl font-bold">:</span>
-                  <span className="text-4xl font-black text-emerald-400">{matchData.team_b_score}</span>
-                </div>
-
-                {/* Team B */}
-                <div className="flex-1 text-center">
-                  <div className="w-16 h-16 mx-auto mb-2 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center font-bold text-lg text-white">
-                    {matchData.team_b?.logo ? (
-                      <img src={matchData.team_b.logo} alt={matchData.team_b.name} className="w-full h-full rounded-2xl object-cover" />
-                    ) : (
-                      matchData.team_b?.name?.substring(0, 2).toUpperCase() || 'B'
-                    )}
+                {/* Team B Row */}
+                <div className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isTeamBBatting ? 'bg-emerald-950/40 border-emerald-500/50' : 'bg-slate-950/60 border-slate-800'}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-sm text-white overflow-hidden">
+                      {matchData.team_b?.logo ? (
+                        <img src={matchData.team_b.logo} alt={matchData.team_b.name} className="w-full h-full object-cover" />
+                      ) : (
+                        matchData.team_b?.name?.substring(0, 2).toUpperCase() || 'B'
+                      )}
+                    </div>
+                    <div>
+                      <h3 className="font-extrabold text-white text-sm flex items-center gap-1.5">
+                        {matchData.team_b?.name || 'Team B'}
+                        {isTeamBBatting && <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Batting" />}
+                      </h3>
+                      {isCricket && (
+                        <p className="text-2xs text-slate-400 font-medium">
+                          {teamBOvers} ov {stats?.b?.run_rate ? `· RR ${stats.b.run_rate}` : ''}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <h3 className="font-extrabold text-white text-base truncate">{matchData.team_b?.name || 'Team B'}</h3>
+                  <div className="text-right">
+                    <span className="text-2xl font-black text-white font-mono">
+                      {teamBScore}{isCricket ? <span className="text-base text-slate-400 font-bold">/{teamBWickets}</span> : ''}
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {/* Target / Chasing Banner */}
+              {isCricket && chase && matchData.status === 'LIVE' && (
+                <div className="mt-3 p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-center text-xs text-amber-300 font-semibold flex items-center justify-center gap-2">
+                  <Target className="w-4 h-4 text-amber-400" />
+                  Target: {chase.target} {chase.runs_needed !== null && (
+                    <span>· Need <strong className="text-white">{chase.runs_needed}</strong> runs {chase.balls_remaining ? `from ${chase.balls_remaining} balls` : ''}</span>
+                  )}
+                </div>
+              )}
+
+              {/* Cricket Active Batters & Bowler */}
+              {isCricket && (cricket?.striker || cricket?.bowler) && (
+                <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2 text-xs">
+                  {cricket.striker && (
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="font-semibold text-white flex items-center gap-1">
+                        {cricket.striker.name} <span className="text-emerald-400 font-bold">*</span>
+                      </span>
+                      <span className="font-mono text-2xs text-slate-400">
+                        <strong className="text-white font-mono">{cricket.striker.runs || 0}</strong> ({cricket.striker.balls || 0}b, {cricket.striker.fours || 0}x4, {cricket.striker.sixes || 0}x6)
+                      </span>
+                    </div>
+                  )}
+                  {cricket.non_striker && (
+                    <div className="flex justify-between items-center text-slate-300">
+                      <span className="font-semibold text-slate-400">
+                        {cricket.non_striker.name}
+                      </span>
+                      <span className="font-mono text-2xs text-slate-400">
+                        <strong className="text-white font-mono">{cricket.non_striker.runs || 0}</strong> ({cricket.non_striker.balls || 0}b)
+                      </span>
+                    </div>
+                  )}
+                  {cricket.bowler && (
+                    <div className="flex justify-between items-center text-slate-400 pt-1 border-t border-slate-800/40">
+                      <span className="font-semibold text-slate-300">
+                        Bowl: {cricket.bowler.name}
+                      </span>
+                      <span className="font-mono text-2xs text-slate-400">
+                        {cricket.bowler.overs || '0.0'} ov · {cricket.bowler.wickets || 0}w · {cricket.bowler.runs || 0}r
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Bottom info */}
+            {/* Bottom status */}
             <div className="pt-6 border-t border-slate-800/80 text-center text-xs text-slate-400">
               {matchData.status === 'FINISHED' ? (
                 <div className="p-3 bg-emerald-950/60 border border-emerald-800 rounded-xl text-emerald-300 font-bold">
                   Winner: {matchData.winner_id === matchData.team_a_id ? matchData.team_a?.name : matchData.winner_id === matchData.team_b_id ? matchData.team_b?.name : 'Draw'}
                 </div>
               ) : (
-                <p>Realtime score engine synchronized</p>
+                <p className="flex items-center justify-center gap-1.5 text-2xs text-slate-500">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" /> Realtime score engine synchronized
+                </p>
               )}
             </div>
           </div>
@@ -210,7 +320,9 @@ export default function LiveMatchCenter() {
                 <div key={ev.id} className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800/80 text-xs">
                   <div className="flex items-center gap-3">
                     <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className={`font-bold ${ev.is_undone ? 'text-slate-500 line-through' : 'text-white'}`}>{ev.is_undone ? `Corrected · ${ev.event_type.replace('_', ' ')}` : ev.event_type.replace('_', ' ')}</span>
+                    <span className={`font-bold ${ev.is_undone ? 'text-slate-500 line-through' : 'text-white'}`}>
+                      {ev.is_undone ? `Corrected · ${ev.event_type.replace(/_/g, ' ')}` : ev.event_type.replace(/_/g, ' ')}
+                    </span>
                     {ev.player_name && <span className="text-slate-300">&bull; {ev.player_name}</span>}
                     {ev.team_name && <span className="text-emerald-400 font-medium">({ev.team_name})</span>}
                   </div>

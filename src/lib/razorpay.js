@@ -66,3 +66,5 @@ export async function openRazorpayCheckout({
     rzp.open();
   });
 }
+
+export const loadRazorpay = loadRazorpayScript;

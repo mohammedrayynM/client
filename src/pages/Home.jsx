@@ -23,6 +23,7 @@ export default function HomePage() {
   const [parksLoading, setParksLoading] = useState(true);
   const [parksError, setParksError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sportsList, setSportsList] = useState([]);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLocating, setIsLocating] = useState(false);
@@ -92,6 +93,7 @@ export default function HomePage() {
 
     loadTurfs();
     loadParks();
+    loadSports();
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const interval = reduceMotion ? null : setInterval(() => {
       setCurrentSlide(prev => (prev + 1) % heroImages.length);
@@ -147,6 +149,15 @@ export default function HomePage() {
       setParksError('Parks are temporarily unavailable. Please try again.');
     } finally {
       setParksLoading(false);
+    }
+  }
+
+  async function loadSports() {
+    try {
+      const data = await apiGet('/discovery/sports');
+      if (Array.isArray(data?.sports)) setSportsList(data.sports);
+    } catch (err) {
+      console.warn('Could not load sports categories:', err);
     }
   }
 
@@ -274,31 +285,70 @@ export default function HomePage() {
 
           <div style={{ maxWidth: '400px', margin: '0 auto 2rem auto' }}>
             <select className="form-input" style={{ width: '100%', cursor: 'pointer', textAlign: 'center', fontWeight: 'bold' }} onChange={(e) => { if(e.target.value) router(`/turfs?sport=${e.target.value}`) }}>
-              <option value="">🔎 Browse Other Sports...</option>
-              <option value="tennis">🎾 Tennis</option>
-              <option value="basketball">🏀 Basketball</option>
-              <option value="volleyball">🏐 Volleyball</option>
-              <option value="swimming">🏊‍♂️ Swimming</option>
-              <option value="box cricket">🏏 Box Cricket</option>
+              <option value="">🔎 Browse All Sports...</option>
+              {sportsList.length > 0 ? (
+                sportsList.map((s) => (
+                  <option key={s.id} value={s.slug || s.name.toLowerCase()}>{s.name}</option>
+                ))
+              ) : (
+                <>
+                  <option value="tennis">🎾 Tennis</option>
+                  <option value="basketball">🏀 Basketball</option>
+                  <option value="volleyball">🏐 Volleyball</option>
+                  <option value="swimming">🏊‍♂️ Swimming</option>
+                  <option value="box cricket">🏏 Box Cricket</option>
+                </>
+              )}
             </select>
           </div>
 
-          <div className="grid-3">
-            <Link to="/turfs?sport=cricket" className="card" style={{ cursor: 'pointer', textAlign: 'center', padding: '2rem 1.5rem', background: 'var(--bg-card)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))' }}>🏏</div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Cricket</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Book Now →</p>
-            </Link>
-            <Link to="/turfs?sport=football" className="card" style={{ cursor: 'pointer', textAlign: 'center', padding: '2rem 1.5rem', background: 'var(--bg-card)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))' }}>⚽</div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Football</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Book Now →</p>
-            </Link>
-            <Link to="/turfs?sport=badminton" className="card" style={{ cursor: 'pointer', textAlign: 'center', padding: '2rem 1.5rem', background: 'var(--bg-card)' }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem', filter: 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))' }}>🏸</div>
-              <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.5rem' }}>Badminton</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Book Now →</p>
-            </Link>
+          <div className="grid-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
+            {(sportsList.length > 0 ? sportsList.slice(0, 6) : [
+              { id: 'cricket', name: 'Cricket', slug: 'cricket', emoji: '🏏' },
+              { id: 'football', name: 'Football', slug: 'football', emoji: '⚽' },
+              { id: 'badminton', name: 'Badminton', slug: 'badminton', emoji: '🏸' }
+            ]).map((s) => {
+              const info = SPORTS[s.slug] || SPORTS[s.name?.toLowerCase()] || {};
+              const emoji = s.emoji || info.emoji || '🏟️';
+              return (
+                <Link
+                  key={s.id}
+                  to={`/turfs?sport=${encodeURIComponent(s.slug || s.name.toLowerCase())}`}
+                  className="card"
+                  style={{
+                    cursor: 'pointer',
+                    textAlign: 'center',
+                    padding: s.image_url ? '0' : '2rem 1.5rem',
+                    background: 'var(--bg-card)',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    minHeight: '180px',
+                    position: 'relative',
+                    borderRadius: 'var(--radius-lg, 12px)'
+                  }}
+                >
+                  {s.image_url ? (
+                    <div style={{ position: 'relative', width: '100%', height: '140px', overflow: 'hidden' }}>
+                      <img
+                        src={s.image_url}
+                        alt={s.name}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                      />
+                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 70%)' }} />
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '3rem', margin: '1rem 0 0.5rem', filter: 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))' }}>{emoji}</div>
+                  )}
+                  <div style={{ padding: '0.85rem 1rem' }}>
+                    <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{s.name}</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Book Now →</p>
+                  </div>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>

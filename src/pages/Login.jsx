@@ -6,7 +6,7 @@ import { GoogleLogin } from '@react-oauth/google';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
 import { setPageMeta } from '@/lib/seo';
-import { apiPost } from '@/lib/api';
+import { apiPost, apiGet } from '@/lib/api';
 
 function LoginContent() {
   const router = useRouter();
@@ -27,6 +27,9 @@ function LoginContent() {
   const [formData, setFormData] = useState({ name: '', email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  // Admin-controlled Google login toggle — fetched fresh each time the login page opens.
+  // Defaults to false so the button is never shown before we hear from the server.
+  const [googleEnabled, setGoogleEnabled] = useState(false);
 
   useEffect(() => {
     setPageMeta({
@@ -35,6 +38,15 @@ function LoginContent() {
       keywords: 'book arena login, sign up, user account, turf booking account',
       robots: 'noindex, nofollow',
       canonicalUrl: 'https://bookarena.in/login'
+    });
+  }, []);
+
+  // Fetch the admin-controlled feature flag when the page mounts.
+  useEffect(() => {
+    apiGet('/app-config').then((r) => {
+      setGoogleEnabled(!!r?.auth?.google_login_enabled);
+    }).catch(() => {
+      setGoogleEnabled(false); // stay hidden if the network request fails
     });
   }, []);
 
@@ -123,16 +135,21 @@ function LoginContent() {
           )}
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem', alignItems: 'center' }}>
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => setError('Google Login Failed')}
-              theme="filled_blue"
-              shape="pill"
-              text="continue_with"
-              width="360"
-              useOneTap
-              auto_select
-            />
+            {/* Show Google login only when the Admin has enabled it. The flag is fetched live from
+                /api/app-config so toggling it in the Admin Panel takes effect immediately without
+                any frontend rebuild. The GoogleOAuthProvider wrapping the whole app handles OAuth. */}
+            {googleEnabled && (
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setError('Google Login Failed')}
+                theme="filled_blue"
+                shape="pill"
+                text="continue_with"
+                width="360"
+                useOneTap
+                auto_select
+              />
+            )}
             
             <button 
               type="button" 
