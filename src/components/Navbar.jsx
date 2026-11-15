@@ -51,7 +51,7 @@ export default function Navbar() {
     <nav className="navbar" id="main-navbar">
       <div className="container">
         <Link to="/" className="navbar-logo" style={{ display: 'flex', alignItems: 'center', gap: '6px', textDecoration: 'none' }}>
-          <img src="/images/logo.png" alt="Book Arena Logo" loading="eager" decoding="async" style={{ height: '38px', width: 'auto', borderRadius: '8px' }} />
+          <img src="/images/book-arena-logo-128.png" srcSet="/images/book-arena-logo-128.png 1x, /images/book-arena-logo-256.png 2x" width="40" height="40" alt="Book Arena Logo" loading="eager" decoding="async" style={{ height: '40px', width: '40px', objectFit: 'contain', filter: 'drop-shadow(0 2px 8px rgba(132, 204, 22, 0.25))' }} />
           <span style={{ fontWeight: 800, fontSize: '1.1rem' }}>Book <span className="accent">Arena</span></span>
         </Link>
 

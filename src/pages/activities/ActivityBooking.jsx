@@ -332,6 +332,9 @@ export default function ActivityBooking() {
     setPaying(true);
     setPaymentError(null);
     let pendingBookingId = null;
+    // set once Razorpay reports a completed payment: from then on never tell the user "not booked" — the server
+    // confirms the ticket from Razorpay's own record even if this verify call fails (network drop, tab closed).
+    let paidBookingId = null;
 
     try {
       const res = await createActivityBooking({
@@ -369,6 +372,7 @@ export default function ActivityBooking() {
         },
       });
 
+      paidBookingId = res.booking_id;
       // Verify on backend
       const verifyRes = await verifyActivityPayment({
         booking_id: res.booking_id,
@@ -386,9 +390,24 @@ export default function ActivityBooking() {
       }
     } catch (err) {
       console.error('Booking or Payment Error:', err);
+      // 400 = signature rejected, 409 = sold out while paying: definitive answers, shown as errors below.
+      if (paidBookingId && err?.status !== 400 && err?.status !== 409) {
+        // Paid, but the verify call itself failed (network / server hiccup). The pass page re-checks the payment with
+        // Razorpay and shows the QR as soon as it is confirmed, so send the customer there instead of an error.
+        sessionStorage.removeItem(`activity-checkout:${slug}`);
+        navigate(`/my-tickets/${paidBookingId}`);
+        return;
+      }
       if (pendingBookingId && err.message === 'PAYMENT_DISMISSED') {
         try {
-          await cancelPendingBooking({ booking_id: pendingBookingId });
+          const cancelRes = await cancelPendingBooking({ booking_id: pendingBookingId });
+          if (cancelRes?.confirmed || cancelRes?.pending) {
+            // the payment went through before the window closed (or Razorpay could not be reached to rule it out):
+            // the pass page shows the server-verified state and the QR once it is confirmed
+            sessionStorage.removeItem(`activity-checkout:${slug}`);
+            navigate(`/my-tickets/${pendingBookingId}`);
+            return;
+          }
         } catch (cancelError) {
           console.error('Could not release the pending activity booking:', cancelError);
         }

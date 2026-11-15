@@ -161,7 +161,7 @@ export default function HostTournaments({ owner }) {
     try {
       const res = await apiGet(`/tournament-matches/${match.id}/live`);
       if (res.success) {
-        setEvents(res.events || []);
+        setMatchEvents(res.events || []);
       }
     } catch (e) {}
   };
@@ -184,7 +184,7 @@ export default function HostTournaments({ owner }) {
           team_b_score: res.team_b_score
         }));
         const lRes = await apiGet(`/tournament-matches/${activeLiveMatch.id}/live`);
-        if (lRes.success) setEvents(lRes.events || []);
+        if (lRes.success) setMatchEvents(lRes.events || []);
       }
     } catch (e) {
       alert('Failed to log event');
@@ -203,7 +203,7 @@ export default function HostTournaments({ owner }) {
           team_b_score: res.team_b_score
         }));
         const lRes = await apiGet(`/tournament-matches/${activeLiveMatch.id}/live`);
-        if (lRes.success) setEvents(lRes.events || []);
+        if (lRes.success) setMatchEvents(lRes.events || []);
       }
     } catch (e) {
       alert('Failed to undo event');
@@ -467,7 +467,7 @@ export default function HostTournaments({ owner }) {
               {/* Event Log with Undo Action */}
               <div className="space-y-3 pt-4 border-t border-slate-800">
                 <h5 className="font-bold text-white text-xs">Recent Match Events</h5>
-                {events.filter(ev => !ev.is_undone).slice(0, 5).map(ev => (
+                {matchEvents.filter(ev => !ev.is_undone).slice(0, 5).map(ev => (
                   <div key={ev.id} className="flex items-center justify-between p-3 bg-slate-950 rounded-xl text-xs border border-slate-800">
                     <div>
                       <span className="font-bold text-white">{ev.event_type}</span>

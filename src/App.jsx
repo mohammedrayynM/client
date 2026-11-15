@@ -67,7 +67,7 @@ function App() {
         '@id': 'https://bookarena.in/#organization',
         name: 'Book Arena',
         url: 'https://bookarena.in/',
-        logo: 'https://bookarena.in/images/logo.png',
+        logo: 'https://bookarena.in/images/book-arena-logo.png',
         founder: { '@id': 'https://bookarena.in/about/founder#person' },
         contactPoint: [{
           '@type': 'ContactPoint',

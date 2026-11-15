@@ -363,10 +363,24 @@ export default function AdminDashboard() {
     } catch (err) { alert(err.message); }
   }
 
-  async function handleDeleteTurf(id) {
-    if (!confirm('Delete this turf?')) return;
-    try { await apiDelete(`/admin/turfs/${id}`); loadAllData(); }
-    catch (err) { alert(err.message); }
+  // Deleting archives the venue on the server (bookings, payments and refunds are kept) and hides it everywhere.
+  // A venue with upcoming paid bookings / active subscriptions answers 409 first; the admin must confirm again.
+  async function handleDeleteTurf(id, name = 'this venue') {
+    if (!window.confirm(`Delete "${name}"?\n\nIt will be removed from the app and website and can no longer be booked. Its booking and payment history is kept.`)) return;
+    try {
+      let res;
+      try {
+        res = await apiDelete(`/admin/turfs/${id}`);
+      } catch (err) {
+        if (err.status !== 409 || err.data?.code !== 'VENUE_HAS_UPCOMING') throw err;
+        if (!window.confirm(`${err.data.error}\n\nDelete it anyway?`)) return;
+        res = await apiDelete(`/admin/turfs/${id}?force=1`);
+      }
+      alert(res?.message || 'Venue deleted.');
+    } catch (err) {
+      alert(err.status === 404 ? 'This venue no longer exists. The list has been refreshed.' : `Could not delete the venue: ${err.message}`);
+    }
+    loadAllData();
   }
 
   async function viewTurfAnalytics(turf) {
@@ -380,10 +394,10 @@ export default function AdminDashboard() {
   }
 
   async function handleDeleteTurfBookings(turfId) {
-    if (!confirm('Are you absolutely sure you want to delete ALL bookings for this turf? This cannot be undone.')) return;
+    if (!confirm('Clear abandoned booking attempts for this venue?\n\nOnly unpaid, failed or cancelled attempts where no money was taken are removed. Paid, confirmed and refunded bookings are always kept.')) return;
     try {
-      await apiDelete(`/admin/turfs/${turfId}/bookings`);
-      alert('All bookings for this turf deleted.');
+      const res = await apiDelete(`/admin/turfs/${turfId}/bookings`);
+      alert(res?.message || 'Abandoned booking attempts cleared.');
       loadAllData();
       setSelectedTurfAnalytics(null);
     } catch (err) {
@@ -715,7 +729,8 @@ export default function AdminDashboard() {
   async function handleRemoveMatch(matchId) {
     if (!confirm('Remove this match request?')) return;
     try {
-      await apiDelete(`/match-requests/${matchId}`, { admin_id: admin.id });
+      // admin path: the server only lets a match's own host use /match-requests/:id
+      await apiDelete(`/match-requests/admin/${matchId}`);
       alert('Match removed');
       loadMatchData();
     } catch (err) {
@@ -819,7 +834,7 @@ export default function AdminDashboard() {
               {tabs.find(t => t.key === activeTab)?.icon} {tabs.find(t => t.key === activeTab)?.label}
             </h1>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              Welcome, {admin?.username || 'Admin'} 👑
+              Welcome, {admin?.username || 'Admin'}
             </p>
           </div>
         </div>
@@ -960,7 +975,7 @@ export default function AdminDashboard() {
                                 danger: !isBlocked,
                                 onClick: () => toggleBlockTurf(t.id, t.status, t.is_active)
                               },
-                              { label: 'Delete Turf', icon: '🗑️', danger: true, onClick: () => handleDeleteTurf(t.id) }
+                              { label: 'Delete Turf', icon: '🗑️', danger: true, onClick: () => handleDeleteTurf(t.id, t.name) }
                             ]}
                           />
                         </td>
@@ -1040,7 +1055,7 @@ export default function AdminDashboard() {
                     This action will permanently delete <strong>all booking records, payments, and revenue history</strong> associated with <strong>{selectedTurfAnalytics.name}</strong>. This action is irreversible.
                   </p>
                   <button className="btn btn-danger" onClick={() => handleDeleteTurfBookings(selectedTurfAnalytics.id)}>
-                    🗑️ Delete All Bookings Data
+                    🧹 Clear Abandoned Booking Attempts
                   </button>
                 </div>
               </div>

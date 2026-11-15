@@ -142,7 +142,10 @@ export default function AdminRoute() {
     setActionLoading(true);
     try {
       const res = await apiPost(`/admin/route/turfs/${selectedTurf.id}/reconcile`, {});
-      alert(`Reconciliation complete. Scanned: ${res.scanned}, Updated: ${res.updated}`);
+      const todo = res.needs_action || [];
+      alert(todo.length
+        ? `Checked ${res.scanned} payment(s) from the last 30 days. ${todo.length} need attention:\n\n${todo.slice(0, 8).map((t) => `• ${t.payment_id}: ${t.reason}`).join('\n')}${todo.length > 8 ? `\n…and ${todo.length - 8} more` : ''}\n\nOpen Finance → Payment lookup to review and confirm each one. Nothing was transferred automatically.`
+        : `Checked ${res.scanned} payment(s) from the last 30 days. Everything is reconciled.${(res.unreadable || []).length ? ` (${res.unreadable.length} could not be read from Razorpay right now.)` : ''}`);
       loadTurfDetails(selectedTurf.id);
     } catch (err) {
       alert(err.message || 'Reconciliation failed');

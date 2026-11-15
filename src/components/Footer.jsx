@@ -7,7 +7,7 @@ export default function Footer() {
         <div className="footer-grid">
           <div className="footer-brand">
             <div className="logo" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/images/logo.png" alt="Book Arena Logo" loading="lazy" decoding="async" style={{ height: '45px', width: 'auto', borderRadius: '8px' }} />
+              <img src="/images/book-arena-logo-128.png" srcSet="/images/book-arena-logo-128.png 1x, /images/book-arena-logo-256.png 2x" width="48" height="48" alt="Book Arena Logo" loading="lazy" decoding="async" style={{ height: '48px', width: '48px', objectFit: 'contain' }} />
               <span>Book <span style={{ color: 'var(--emerald-400)' }}>Arena</span></span>
             </div>
             <p>

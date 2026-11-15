@@ -1385,6 +1385,9 @@ export default function TurfDetailPage() {
                               return;
                             }
                             (async () => {
+                              // The browser only sends WHICH plan; price/currency/order come from the server, and the
+                              // subscription becomes active only after the server verifies the Razorpay signature
+                              // (or the payment.captured webhook) — never because the checkout window closed.
                               try {
                                 const purRes = await apiPost('/subscriptions/purchase', { subscription_offer_id: plan.id });
                                 if (purRes.skipPayment) {
@@ -1392,58 +1395,61 @@ export default function TurfDetailPage() {
                                   window.location.reload();
                                   return;
                                 }
-                                const { loadRazorpay: loadRzp } = await import('../lib/razorpay').catch(() => ({
-                                  loadRazorpay: () => new Promise((res, rej) => {
-                                    if (window.Razorpay) return res(true);
-                                    const s = document.createElement('script');
-                                    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-                                    s.onload = () => res(true); s.onerror = () => rej(new Error('Failed to load Razorpay'));
-                                    document.body.appendChild(s);
-                                  })
-                                }));
-                                await (typeof loadRzp === 'function' ? loadRzp() : new Promise((res, rej) => {
-                                  if (window.Razorpay) return res(true);
-                                  const s = document.createElement('script');
-                                  s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-                                  s.onload = () => res(true); s.onerror = () => rej(new Error('Failed to load Razorpay'));
-                                  document.body.appendChild(s);
-                                }));
-                                await new Promise((resolve, reject) => {
+                                const { loadRazorpayScript } = await import('../lib/razorpay');
+                                if (!(await loadRazorpayScript()) || !window.Razorpay) {
+                                  throw new Error('Razorpay checkout could not be loaded. Please disable any ad-blocker and try again.');
+                                }
+                                const razorpayKey = purRes.key_id || import.meta.env.VITE_RAZORPAY_KEY_ID;
+                                if (!razorpayKey) throw new Error('Online payments are not configured. Please contact support.');
+                                const outcome = await new Promise((resolve) => {
+                                  let settled = false;
+                                  let lastFailure = '';
+                                  const done = (value) => { if (!settled) { settled = true; resolve(value); } };
                                   const rzp = new window.Razorpay({
-                                    key: purRes.key_id || process.env.REACT_APP_RAZORPAY_KEY_ID,
+                                    key: razorpayKey,
                                     amount: purRes.amount,
                                     currency: purRes.currency || 'INR',
                                     name: 'Book Arena',
                                     description: `Subscription: ${plan.name}`,
                                     order_id: purRes.order_id,
-                                    handler: async function(response) {
+                                    handler: async function (response) {
                                       try {
                                         await apiPost('/subscriptions/verify', {
                                           razorpay_order_id: response.razorpay_order_id,
                                           razorpay_payment_id: response.razorpay_payment_id,
                                           razorpay_signature: response.razorpay_signature,
                                         });
-                                        alert('Subscription activated! Your slots are reserved. Check My Subscriptions.');
-                                        window.location.reload();
-                                        resolve();
-                                      } catch (e) { reject(e); }
+                                        done({ status: 'paid' });
+                                      } catch (e) {
+                                        const st = e?.response?.status;
+                                        done({ status: st >= 400 && st < 500 ? 'failed' : 'unknown', error: e?.response?.data?.error || e?.message });
+                                      }
                                     },
-                                    prefill: { name: user?.name || '', email: user?.email || '' },
+                                    prefill: { name: currentUser?.name || '', email: currentUser?.email || '', contact: currentUser?.phone || '' },
                                     theme: { color: '#10b981' },
                                     modal: {
                                       ondismiss: async () => {
+                                        // the server checks Razorpay for a captured payment before releasing anything
                                         try { await apiPost('/subscriptions/cancel-payment', { razorpay_order_id: purRes.order_id }); } catch (_) {}
-                                        resolve();
+                                        done(lastFailure ? { status: 'failed', error: lastFailure } : { status: 'cancelled' });
                                       }
                                     }
                                   });
-                                  rzp.on('payment.failed', async () => {
-                                    try { await apiPost('/subscriptions/cancel-payment', { razorpay_order_id: purRes.order_id, failed: true }); } catch (_) {}
-                                    alert('Payment failed. Your subscription was not activated. Please try again.');
-                                    resolve();
+                                  // Razorpay keeps its window open after a failed attempt so the customer can retry; only record it.
+                                  rzp.on('payment.failed', async (resp) => {
+                                    lastFailure = resp?.error?.description || 'Payment failed';
+                                    try { await apiPost('/subscriptions/cancel-payment', { razorpay_order_id: purRes.order_id, failed: true, reason: lastFailure }); } catch (_) {}
                                   });
                                   rzp.open();
                                 });
+                                if (outcome.status === 'paid') {
+                                  alert('Subscription activated! Your slots are reserved. Check My Subscriptions.');
+                                  window.location.reload();
+                                } else if (outcome.status === 'failed') {
+                                  alert(`${outcome.error ? `${outcome.error}\n\n` : ''}Your subscription was not activated. Please try again.`);
+                                } else if (outcome.status === 'unknown') {
+                                  alert('We have not received a confirmation for this payment yet. If you were charged, your subscription will appear in My Subscriptions shortly, or the amount is refunded automatically.');
+                                }
                               } catch (err) {
                                 alert(err?.response?.data?.error || err.message || 'Could not start subscription. Please try again.');
                               }

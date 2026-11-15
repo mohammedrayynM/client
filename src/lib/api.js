@@ -37,7 +37,8 @@ function isOwnerEndpoint(endpoint) {
 }
 
 function isAdminEndpoint(endpoint) {
-  return endpoint.startsWith('/admin');
+  // the Find-Players moderation actions live under /match-requests but are admin-only on the server
+  return endpoint.startsWith('/admin') || /^\/match-requests\/(admin\/|\d+\/(feature|broadcast)$)/.test(endpoint);
 }
 
 function getAuthToken(endpoint) {
@@ -128,7 +129,10 @@ export async function apiPost(endpoint, body) {
       if (res.status === 401 || res.status === 403) {
         handleAuthFailure(endpoint);
       }
-      throw new Error(data.error || 'Server error');
+      const error = new Error(data.error || 'Server error');
+      error.status = res.status;
+      error.data = data;
+      throw error;
     }
     return data;
   } catch (err) {
@@ -180,7 +184,10 @@ export async function apiDelete(endpoint, body) {
       if (res.status === 401 || res.status === 403) {
         handleAuthFailure(endpoint);
       }
-      throw new Error(data.error || 'Server error');
+      const error = new Error(data.error || 'Server error');
+      error.status = res.status; // e.g. 409 "venue has upcoming bookings" needs the code + numbers, not just the text
+      error.data = data;
+      throw error;
     }
     return data;
   } catch (err) {

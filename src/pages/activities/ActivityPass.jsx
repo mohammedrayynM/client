@@ -44,6 +44,20 @@ export default function ActivityPass() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Payment still being confirmed: the server checks Razorpay on every load and issues the QR once the payment is
+  // captured, so re-check every few seconds for a minute (the QR then appears without a manual refresh).
+  const pendingStatus = data?.booking?.status === 'pending';
+  useEffect(() => {
+    if (!pendingStatus) return undefined;
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      fetchMyTicketDetail(id).then(setData).catch(() => {});
+      if (tries >= 12) clearInterval(timer);
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [id, pendingStatus]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col bg-slate-950 text-white">
@@ -77,7 +91,12 @@ export default function ActivityPass() {
   const isConfirmed = booking.status === 'confirmed';
   // Only show server-issued ticket tokens. A booking reference is not a scannable admission ticket.
   // Single-QR activities issue one token covering the group; per-ticket activities issue one per person.
-  const issuedTickets = isConfirmed ? tickets.filter((ticket) => ticket.qr_token && ticket.status === 'VALID') : [];
+  // VALID/UNUSED = not scanned yet; SCANNED = some entries used, the rest still admit. Used-up / cancelled / refunded /
+  // expired tickets are listed with their status but never shown as a scannable QR.
+  const LIVE = ['VALID', 'UNUSED', 'SCANNED'];
+  const STATUS_LABEL = { VALID: 'Valid', UNUSED: 'Valid', SCANNED: 'Partly used', COMPLETED: 'Used', EXPIRED: 'Expired', CANCELLED: 'Cancelled', REFUNDED: 'Refunded' };
+  const issuedTickets = isConfirmed ? tickets.filter((ticket) => ticket.qr_token && LIVE.includes(ticket.status)) : [];
+  const closedTickets = tickets.filter((ticket) => ticket.qr_token && !LIVE.includes(ticket.status));
 
   const formattedDate = booking.booking_date
     ? new Date(booking.booking_date).toLocaleDateString('en-IN', {
@@ -128,7 +147,9 @@ export default function ActivityPass() {
                   <div key={ticket.qr_token} className="flex flex-col items-center">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                       <QrIcon className="w-4 h-4 text-emerald-400" />
-                      {issuedTickets.length > 1 ? `Ticket ${index + 1} · ${ticket.quantity_covered || 1} admission${Number(ticket.quantity_covered || 1) === 1 ? '' : 's'}` : 'Digital Access Pass'}
+                      {issuedTickets.length > 1
+                        ? `Ticket ${index + 1} of ${issuedTickets.length}${ticket.ticket_type_name ? ` · ${ticket.ticket_type_name}` : ''} · ${ticket.quantity_covered || 1} admission${Number(ticket.quantity_covered || 1) === 1 ? '' : 's'}`
+                        : 'Digital Access Pass'}
                     </span>
                     <div className="p-4 bg-white rounded-2xl shadow-xl inline-block">
                       <svg
@@ -144,6 +165,10 @@ export default function ActivityPass() {
                     <p className="text-xs font-mono font-bold text-emerald-400 mt-4 tracking-widest">
                       TICKET {index + 1} · {ticket.qr_token.slice(0, 12).toUpperCase()}
                     </p>
+                    <p className="text-[11px] font-bold mt-1 text-slate-300">
+                      {STATUS_LABEL[ticket.status] || ticket.status}
+                      {Number(ticket.quantity_covered) > 1 ? ` · ${Math.max(0, Number(ticket.quantity_covered) - Number(ticket.redeemed_quantity || 0))} of ${ticket.quantity_covered} entries left` : ''}
+                    </p>
                   </div>
                 );
               })}
@@ -151,7 +176,15 @@ export default function ActivityPass() {
             </div>
           ) : (
             <div className="p-6 text-center bg-slate-950 border-b border-slate-800 text-sm text-slate-400">
-              {isConfirmed ? 'No active QR ticket is available for this booking. Please contact the activity.' : 'Your QR ticket will appear after payment is confirmed.'}
+              {isConfirmed && closedTickets.length > 0
+                ? `This ticket is ${String(STATUS_LABEL[closedTickets[0].status] || closedTickets[0].status).toLowerCase()} and can no longer be scanned.`
+                : isConfirmed
+                  ? 'No active QR ticket is available for this booking. Please contact the activity.'
+                  : booking.status === 'pending'
+                    ? 'Confirming your payment… your QR ticket will appear here automatically once the payment is verified.'
+                    : booking.status === 'cancelled'
+                      ? (booking.refund_amount > 0 ? 'This booking was cancelled and refunded. No QR ticket is valid for it.' : 'This booking was cancelled. No QR ticket is valid for it.')
+                      : 'Your QR ticket will appear after payment is confirmed.'}
             </div>
           )}
 

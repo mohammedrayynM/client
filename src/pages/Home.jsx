@@ -6,6 +6,7 @@ import Footer from '@/components/Footer';
 import TurfCard from '@/components/TurfCard';
 import AdBanner from '@/components/AdBanner';
 import { apiGet } from '@/lib/api';
+import { resolveMediaUrl } from '@/lib/mediaUrl';
 import { SPORTS } from '@/lib/constants';
 import { setJsonLd, setPageMeta } from '@/lib/seo';
 import { fetchActivities } from '@/services/activities';
@@ -24,6 +25,8 @@ export default function HomePage() {
   const [parksError, setParksError] = useState('');
   const [loading, setLoading] = useState(true);
   const [sportsList, setSportsList] = useState([]);
+  const [showAllSports, setShowAllSports] = useState(false);
+  const sportsSectionRef = useRef(null);
 
   const [currentSlide, setCurrentSlide] = useState(0);
   const [isLocating, setIsLocating] = useState(false);
@@ -67,7 +70,7 @@ export default function HomePage() {
         '@type': 'Organization',
         name: 'Book Arena',
         url: 'https://bookarena.in/',
-        logo: 'https://bookarena.in/images/logo.png',
+        logo: 'https://bookarena.in/images/book-arena-logo.png',
         contactPoint: [{
           '@type': 'ContactPoint',
           telephone: '+91 89034 95256',
@@ -265,7 +268,7 @@ export default function HomePage() {
       </div>
 
       {/* ═══════ SPORTS CATEGORIES ═══════ */}
-      <section className="section" id="sports-section" style={{ position: 'relative' }}>
+      <section className="section" id="sports-section" ref={sportsSectionRef} style={{ position: 'relative', scrollMarginTop: '80px' }}>
         <div style={{
           position: 'absolute',
           top: 0,
@@ -302,54 +305,87 @@ export default function HomePage() {
             </select>
           </div>
 
-          <div className="grid-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.25rem' }}>
-            {(sportsList.length > 0 ? sportsList.slice(0, 6) : [
+          {(() => {
+            // Categories come from the admin's list (/discovery/sports: enabled only, in the admin's order). The three
+            // hard-coded entries are only a fallback for when that request fails, exactly as before.
+            const seen = new Set();
+            const categories = (sportsList.length > 0 ? sportsList : [
               { id: 'cricket', name: 'Cricket', slug: 'cricket', emoji: '🏏' },
               { id: 'football', name: 'Football', slug: 'football', emoji: '⚽' },
               { id: 'badminton', name: 'Badminton', slug: 'badminton', emoji: '🏸' }
-            ]).map((s) => {
-              const info = SPORTS[s.slug] || SPORTS[s.name?.toLowerCase()] || {};
-              const emoji = s.emoji || info.emoji || '🏟️';
-              return (
-                <Link
-                  key={s.id}
-                  to={`/turfs?sport=${encodeURIComponent(s.slug || s.name.toLowerCase())}`}
-                  className="card"
-                  style={{
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    padding: s.image_url ? '0' : '2rem 1.5rem',
-                    background: 'var(--bg-card)',
-                    overflow: 'hidden',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'space-between',
-                    minHeight: '180px',
-                    position: 'relative',
-                    borderRadius: 'var(--radius-lg, 12px)'
-                  }}
-                >
-                  {s.image_url ? (
-                    <div style={{ position: 'relative', width: '100%', height: '140px', overflow: 'hidden' }}>
-                      <img
-                        src={s.image_url}
-                        alt={s.name}
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                        onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                      />
-                      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.65) 0%, transparent 70%)' }} />
-                    </div>
-                  ) : (
-                    <div style={{ fontSize: '3rem', margin: '1rem 0 0.5rem', filter: 'drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))' }}>{emoji}</div>
-                  )}
-                  <div style={{ padding: '0.85rem 1rem' }}>
-                    <h3 style={{ fontFamily: 'var(--font-display)', fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)', marginBottom: '0.25rem' }}>{s.name}</h3>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Book Now →</p>
+            ]).filter((s) => {
+              const key = String(s.id ?? s.slug ?? s.name);
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+            const INITIAL_COUNT = 3;
+            const visible = showAllSports ? categories : categories.slice(0, INITIAL_COUNT);
+            const hiddenCount = Math.max(0, categories.length - INITIAL_COUNT);
+
+            const toggle = () => {
+              if (showAllSports) {
+                setShowAllSports(false);
+                // keep the section in view after it shrinks
+                const el = sportsSectionRef.current;
+                if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              } else {
+                setShowAllSports(true);
+              }
+            };
+
+            return (
+              <>
+                <div className="sport-cat-grid" id="sport-category-grid">
+                  {visible.map((s, index) => {
+                    const info = SPORTS[s.slug] || SPORTS[s.name?.toLowerCase()] || {};
+                    const emoji = s.emoji || info.emoji || '🏟️';
+                    const imageUrl = resolveMediaUrl(s.image_url);
+                    return (
+                      <Link
+                        key={s.id ?? s.slug ?? s.name}
+                        to={`/turfs?sport=${encodeURIComponent(s.slug || s.name.toLowerCase())}`}
+                        className={`sport-cat-card${imageUrl ? ' has-image' : ''}${index >= INITIAL_COUNT ? ' sport-cat-extra' : ''}`}
+                        style={index >= INITIAL_COUNT ? { animationDelay: `${(index - INITIAL_COUNT) * 70}ms` } : undefined}
+                        aria-label={`Book ${s.name}`}
+                      >
+                        {imageUrl ? (
+                          <img
+                            className="sport-cat-img"
+                            src={imageUrl}
+                            alt=""
+                            loading={index < INITIAL_COUNT ? 'eager' : 'lazy'}
+                            decoding="async"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.parentElement?.classList.remove('has-image'); }}
+                          />
+                        ) : null}
+                        <span className="sport-cat-emoji" aria-hidden="true">{emoji}</span>
+                        <span className="sport-cat-overlay" aria-hidden="true" />
+                        <span className="sport-cat-content">
+                          <h3 className="sport-cat-name">{s.name}</h3>
+                          <span className="sport-cat-cta">Book Now →</span>
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+                {hiddenCount > 0 ? (
+                  <div className="sport-cat-toggle-wrap">
+                    <button
+                      type="button"
+                      className="btn btn-secondary sport-cat-toggle"
+                      onClick={toggle}
+                      aria-expanded={showAllSports}
+                      aria-controls="sport-category-grid"
+                    >
+                      {showAllSports ? 'Show Less' : `View All Categories (${categories.length})`}
+                      <span className={`sport-cat-chevron${showAllSports ? ' open' : ''}`} aria-hidden="true">▾</span>
+                    </button>
                   </div>
-                </Link>
-              );
-            })}
-          </div>
+                ) : null}
+              </>
+            );
+          })()}
         </div>
       </section>
 
