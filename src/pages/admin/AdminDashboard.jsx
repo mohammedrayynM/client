@@ -7,7 +7,7 @@ import { formatPrice, formatCompactNumber, formatDate, getSportInfo, AMENITIES_L
 import AdminTournaments from './AdminTournaments';
 import AdminApprovals from './AdminApprovals';
 import AdminRoute from './AdminRoute';
-import { FinanceOverview, PaymentLookup, VenueBilling } from './AdminFinance';
+import { FinanceOverview, PaymentLookup, VenueBilling, FeeRules } from './AdminFinance';
 import { AuthSettings, SportCategories } from './AdminDiscovery';
 import { setPageMeta } from '@/lib/seo';
 import MoreActions from '@/components/MoreActions';
@@ -167,7 +167,9 @@ export default function AdminDashboard() {
       setBookings(bookingsData.bookings || []);
       setPayouts(payoutsData.payouts || []);
       setPayoutSummary(payoutsData.summary || null);
-      setPendingApprovalsCount((approvalsData.pendingVenues?.length || 0) + (approvalsData.pendingCourts?.length || 0));
+      const pVenues = approvalsData.pendingVenues || approvalsData.pending_turfs || [];
+      const pCourts = approvalsData.pendingCourts || approvalsData.pending_courts || [];
+      setPendingApprovalsCount(pVenues.length + pCourts.length);
       setCommission(dashData.stats?.commission_percent?.toString() ?? '10');
     } catch (err) {
       console.log('Using empty data');
@@ -743,6 +745,7 @@ export default function AdminDashboard() {
     { key: 'approvals', icon: '🛡️', label: 'Approvals' },
     { key: 'route', icon: '⚡', label: 'Razorpay Route' },
     { key: 'venue-billing', icon: '🧾', label: 'Venue Billing' },
+    { key: 'fee-rules', icon: '💲', label: 'Fee Rules' },
     { key: 'payment-lookup', icon: '🔎', label: 'Payment Lookup' },
     { key: 'app-settings', icon: '🔐', label: 'Auth & Sports' },
     { key: 'turfs', icon: '🏟️', label: 'Turfs' },
@@ -843,6 +846,7 @@ export default function AdminDashboard() {
         {activeTab === 'dashboard' && <FinanceOverview onNavigate={(key) => { setActiveTab(key); setSidebarOpen(false); }} />}
 
         {activeTab === 'venue-billing' && <VenueBilling />}
+        {activeTab === 'fee-rules' && <FeeRules />}
         {activeTab === 'payment-lookup' && <PaymentLookup />}
         {activeTab === 'app-settings' && (<><AuthSettings /><SportCategories /></>)}
 

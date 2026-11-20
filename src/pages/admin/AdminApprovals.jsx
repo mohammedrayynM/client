@@ -4,6 +4,7 @@ import { formatDate, formatPrice, VENUE_CATEGORIES } from '@/lib/constants';
 
 export default function AdminApprovals({ onUpdateCount }) {
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState('');
   const [pendingVenues, setPendingVenues] = useState([]);
   const [pendingCourts, setPendingCourts] = useState([]);
   const [activeSubTab, setActiveSubTab] = useState('venues'); // 'venues' | 'courts'
@@ -18,19 +19,34 @@ export default function AdminApprovals({ onUpdateCount }) {
     submitting: false,
   });
 
+  // Billing Model assignment state (required when approving a venue)
+  const [billingModel, setBillingModel] = useState('PERCENTAGE'); // 'PERCENTAGE' | 'FLAT' | 'SUBSCRIPTION'
+  const [commissionPercent, setCommissionPercent] = useState('5');
+  const [flatFee, setFlatFee] = useState('50');
+  const [subscriptionAmount, setSubscriptionAmount] = useState('799');
+  const [subscriptionPeriod, setSubscriptionPeriod] = useState('MONTHLY');
+  const [subscriptionPolicy, setSubscriptionPolicy] = useState('DEDUCT_FROM_PROCEEDS');
+  const [subscriptionStartDate, setSubscriptionStartDate] = useState(() => new Date().toISOString().slice(0, 10));
+
   const loadApprovals = async () => {
     setLoading(true);
+    setFetchError('');
     try {
       const res = await apiGet('/admin/pending-approvals');
-      if (res.success) {
-        setPendingVenues(res.pendingVenues || []);
-        setPendingCourts(res.pendingCourts || []);
+      if (res && res.success) {
+        const venues = res.pendingVenues || res.pending_turfs || [];
+        const courts = res.pendingCourts || res.pending_courts || [];
+        setPendingVenues(venues);
+        setPendingCourts(courts);
         if (onUpdateCount) {
-          onUpdateCount((res.pendingVenues?.length || 0) + (res.pendingCourts?.length || 0));
+          onUpdateCount(venues.length + courts.length);
         }
+      } else {
+        throw new Error(res?.error || 'Failed to retrieve pending approvals');
       }
     } catch (err) {
       console.error('Error fetching pending approvals:', err);
+      setFetchError(err.message || 'Failed to load approvals. Please check your connection and retry.');
     } finally {
       setLoading(false);
     }
@@ -41,6 +57,21 @@ export default function AdminApprovals({ onUpdateCount }) {
   }, []);
 
   const openActionModal = (type, item, status) => {
+    // Pre-populate billing fields if item has existing values
+    if (type === 'venue') {
+      const existingModel = item.billing_model === 'MONTHLY' ? 'SUBSCRIPTION' : (item.billing_model || 'PERCENTAGE');
+      setBillingModel(existingModel);
+      if (item.commission_percentage != null) setCommissionPercent(String(item.commission_percentage));
+      if (item.route_flat_amount != null) setFlatFee(String(item.route_flat_amount));
+      if (item.monthly_subscription_amount != null) setSubscriptionAmount(String(item.monthly_subscription_amount));
+      if (item.subscription_start_date) {
+        const sDate = String(item.subscription_start_date).slice(0, 10);
+        setSubscriptionStartDate(sDate);
+      } else {
+        setSubscriptionStartDate(new Date().toISOString().slice(0, 10));
+      }
+    }
+
     setActionModal({
       isOpen: true,
       type,
@@ -55,21 +86,67 @@ export default function AdminApprovals({ onUpdateCount }) {
     const { type, item, status, feedback } = actionModal;
     if (!item) return;
 
+    // Validate billing inputs if approving a venue
+    let billing_config = null;
+    if (type === 'venue' && status === 'APPROVED') {
+      if (billingModel === 'PERCENTAGE') {
+        const val = parseFloat(commissionPercent);
+        if (isNaN(val) || val < 0 || val > 100) {
+          alert('Please enter a valid commission percentage between 0 and 100%.');
+          return;
+        }
+        billing_config = {
+          billing_model: 'PERCENTAGE',
+          commission_percent: val,
+        };
+      } else if (billingModel === 'FLAT') {
+        const val = parseFloat(flatFee);
+        if (isNaN(val) || val < 0) {
+          alert('Please enter a valid non-negative fixed fee amount.');
+          return;
+        }
+        billing_config = {
+          billing_model: 'FLAT',
+          flat_fee: val,
+        };
+      } else if (billingModel === 'SUBSCRIPTION') {
+        const val = parseFloat(subscriptionAmount);
+        if (isNaN(val) || val <= 0) {
+          alert('Please enter a valid positive subscription amount.');
+          return;
+        }
+        if (!subscriptionStartDate) {
+          alert('Please select a valid subscription start date.');
+          return;
+        }
+        billing_config = {
+          billing_model: 'SUBSCRIPTION',
+          subscription_amount: val,
+          subscription_period: subscriptionPeriod,
+          subscription_policy: subscriptionPolicy,
+          subscription_start_date: subscriptionStartDate,
+        };
+      }
+    }
+
     setActionModal(prev => ({ ...prev, submitting: true }));
     try {
       if (type === 'venue') {
         await apiPut(`/admin/turfs/${item.id}/approval`, {
           approval_status: status,
+          status,
           admin_feedback: feedback,
+          billing_config,
         });
       } else {
         await apiPut(`/admin/courts/${item.id}/approval`, {
           approval_status: status,
+          status,
           admin_feedback: feedback,
         });
       }
       setActionModal({ isOpen: false, type: 'venue', item: null, status: 'APPROVED', feedback: '', submitting: false });
-      loadApprovals();
+      await loadApprovals();
     } catch (err) {
       alert(err.message || 'Action failed. Please try again.');
       setActionModal(prev => ({ ...prev, submitting: false }));
@@ -109,6 +186,16 @@ export default function AdminApprovals({ onUpdateCount }) {
           </button>
         </div>
       </div>
+
+      {fetchError && (
+        <div className="card" style={{ padding: '1.25rem', marginBottom: '1.5rem', background: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong style={{ color: '#ef4444', display: 'block', marginBottom: '0.25rem' }}>⚠️ Unable to load pending approvals</strong>
+            <span style={{ color: '#fca5a5', fontSize: '0.85rem' }}>{fetchError}</span>
+          </div>
+          <button className="btn btn-sm btn-secondary" onClick={loadApprovals}>Retry</button>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '3rem' }}>
@@ -379,6 +466,175 @@ export default function AdminApprovals({ onUpdateCount }) {
               {actionModal.status === 'REJECTED' &&
                 'Explain why this submission does not meet Book Arena standards. The owner will see this message.'}
             </p>
+
+            {/* Billing Model Assignment (Required when approving a venue) */}
+            {actionModal.status === 'APPROVED' && actionModal.type === 'venue' && (
+              <div style={{
+                marginBottom: '1.5rem',
+                padding: '1.25rem',
+                background: 'rgba(16, 185, 129, 0.05)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                borderRadius: '12px'
+              }}>
+                <h4 style={{ color: '#34d399', fontSize: '0.95rem', fontWeight: 800, margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  ⚙️ Assign Platform Billing Model *
+                </h4>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '0 0 1rem 0' }}>
+                  Select the billing model and rate that applies to this venue. This configuration is audited and will be visible in the owner's dashboard.
+                </p>
+
+                {/* Billing Model Tabs / Radios */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginBottom: '1.25rem' }}>
+                  <button
+                    type="button"
+                    onClick={() => setBillingModel('PERCENTAGE')}
+                    style={{
+                      padding: '0.6rem 0.5rem',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      background: billingModel === 'PERCENTAGE' ? '#10b981' : 'rgba(255,255,255,0.05)',
+                      color: billingModel === 'PERCENTAGE' ? '#000' : '#cbd5e1',
+                      border: billingModel === 'PERCENTAGE' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    📊 Commission (%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBillingModel('FLAT')}
+                    style={{
+                      padding: '0.6rem 0.5rem',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      background: billingModel === 'FLAT' ? '#10b981' : 'rgba(255,255,255,0.05)',
+                      color: billingModel === 'FLAT' ? '#000' : '#cbd5e1',
+                      border: billingModel === 'FLAT' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    🏷️ Fixed Fee (₹)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBillingModel('SUBSCRIPTION')}
+                    style={{
+                      padding: '0.6rem 0.5rem',
+                      borderRadius: '8px',
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      background: billingModel === 'SUBSCRIPTION' ? '#10b981' : 'rgba(255,255,255,0.05)',
+                      color: billingModel === 'SUBSCRIPTION' ? '#000' : '#cbd5e1',
+                      border: billingModel === 'SUBSCRIPTION' ? '1px solid #10b981' : '1px solid rgba(255,255,255,0.1)',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    📅 Monthly Sub (₹)
+                  </button>
+                </div>
+
+                {/* Model-specific Fields */}
+                {billingModel === 'PERCENTAGE' && (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.85rem' }}>
+                      Platform Commission Percentage (%) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      max="100"
+                      className="form-input"
+                      placeholder="e.g. 5.0"
+                      value={commissionPercent}
+                      onChange={e => setCommissionPercent(e.target.value)}
+                      required
+                    />
+                    <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                      Example: 5% of each successful booking amount is retained by the platform.
+                    </small>
+                  </div>
+                )}
+
+                {billingModel === 'FLAT' && (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.85rem' }}>
+                      Fixed Platform Fee per Booking (₹) *
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      className="form-input"
+                      placeholder="e.g. 50"
+                      value={flatFee}
+                      onChange={e => setFlatFee(e.target.value)}
+                      required
+                    />
+                    <small style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '0.25rem', display: 'block' }}>
+                      Example: ₹50 fixed fee per successful booking is retained by the platform.
+                    </small>
+                  </div>
+                )}
+
+                {billingModel === 'SUBSCRIPTION' && (
+                  <div style={{ display: 'grid', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label" style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.85rem' }}>
+                        Monthly Subscription Amount (₹) *
+                      </label>
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        className="form-input"
+                        placeholder="e.g. 799"
+                        value={subscriptionAmount}
+                        onChange={e => setSubscriptionAmount(e.target.value)}
+                        required
+                      />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.85rem' }}>
+                          Collection Policy *
+                        </label>
+                        <select
+                          className="form-input"
+                          value={subscriptionPolicy}
+                          onChange={e => setSubscriptionPolicy(e.target.value)}
+                        >
+                          <option value="DEDUCT_FROM_PROCEEDS">Deduct from booking proceeds</option>
+                          <option value="SEPARATE">Owner pays separately</option>
+                        </select>
+                      </div>
+
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" style={{ fontWeight: 600, color: '#e2e8f0', fontSize: '0.85rem' }}>
+                          Start Date *
+                        </label>
+                        <input
+                          type="date"
+                          className="form-input"
+                          value={subscriptionStartDate}
+                          onChange={e => setSubscriptionStartDate(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="form-group" style={{ marginBottom: '1.5rem' }}>
               <label className="form-label" style={{ fontWeight: 600, color: '#e2e8f0' }}>

@@ -1375,9 +1375,22 @@ export default function TurfDetailPage() {
                           </div>
                         </div>
 
+                        {/* Capacity indicator */}
+                        {plan.max_subscribers > 1 && (
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', fontSize: '0.75rem' }}>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              {plan.is_full ? '🔴 Full' : `🟢 ${plan.seats_left} seat${plan.seats_left !== 1 ? 's' : ''} left`}
+                            </span>
+                            <span style={{ color: 'var(--text-muted)' }}>
+                              {plan.max_subscribers - (plan.seats_left || 0)}/{plan.max_subscribers} members
+                            </span>
+                          </div>
+                        )}
+
                         <button 
                           className="btn btn-primary btn-sm" 
                           style={{ width: '100%', borderRadius: '8px' }}
+                          disabled={plan.is_full}
                           onClick={() => {
                             if (!currentUser) {
                               alert('Please login to subscribe');
@@ -1456,7 +1469,7 @@ export default function TurfDetailPage() {
                             })();
                           }}
                         >
-                          Book Fixed Slot
+                          {plan.is_full ? 'Plan Full' : 'Book Fixed Slot'}
                         </button>
                       </div>
                     ))}
@@ -1587,7 +1600,8 @@ export default function TurfDetailPage() {
                                 const endTime = formatSlotTime(rawEndTime);
                                 const isAvailable = slot.status === 'available';
                                 const isSelected = selectedSlots.includes(slot.time);
-                                const statusLabel = slot.status === 'blocked' ? 'Blocked' : slot.status === 'booked' ? 'Booked' : 'Available';
+                                const isMemberReserved = slot.status === 'subscription_reserved';
+                                const statusLabel = slot.status === 'blocked' ? 'Blocked' : slot.status === 'booked' ? 'Booked' : isMemberReserved ? 'Member Reserved' : 'Available';
 
                                 return (
                                   <button
@@ -1598,6 +1612,7 @@ export default function TurfDetailPage() {
                                     className={`slot-card-compact ${
                                       isAvailable
                                         ? isSelected ? 'available selected' : 'available'
+                                        : isMemberReserved ? 'member-reserved'
                                         : slot.status === 'booked' ? 'booked' : 'blocked'
                                     }`}
                                     onClick={() => {

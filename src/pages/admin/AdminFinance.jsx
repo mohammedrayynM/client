@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { apiGet, apiPost, apiPut, apiPatch } from '@/lib/api';
 
 // Billing amounts arrive as integer MINOR units; this is the only place the web admin converts them for display.
 const DIGITS = { KWD: 3, OMR: 3, BHD: 3, JPY: 0 };
@@ -493,6 +493,151 @@ export function VenueBilling() {
           ))}{rows.length === 0 && <tr><td colSpan={10} style={muted}>No venues found.</td></tr>}</tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+
+// ───────────────────────────── Customer Fee Rules ─────────────────────────────
+const FEE_TYPES = [{ k: 'NONE', l: 'No fee' }, { k: 'FIXED', l: 'Fixed amount' }, { k: 'PERCENT', l: 'Percentage' }];
+const APPLY_OPTIONS = [{ k: 'ALL', l: 'All bookings' }, { k: 'VENUE', l: 'Venues only' }, { k: 'ACTIVITY', l: 'Activities only' }];
+const CALC_BASE_OPTIONS = [{ k: 'FULL', l: 'Full booking amount' }, { k: 'ONLINE', l: 'Online payment only' }];
+const APPLY_LABEL = { ALL: 'All', VENUE: 'Venues', ACTIVITY: 'Activities' };
+const CALC_LABEL = { FULL: 'Full booking amount', ONLINE: 'Online payment only' };
+const blankFeeRule = { country_code: 'IN', currency_code: 'INR', fee_type: 'NONE', fee_fixed: '', fee_percent: '', tax_percent: '', tax_inclusive: false, refund_fee_policy: 'NON_REFUNDABLE', note: '', apply_to: 'ALL', show_fee_at_checkout: true, is_active: true, calculation_base: 'FULL' };
+
+export function FeeRules() {
+  const [rules, setRules] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState(null);
+  const [formError, setFormError] = useState('');
+  const [confirm, setConfirm] = useState(false);
+  const [toggling, setToggling] = useState(null);
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  const load = useCallback(async () => {
+    try { setError(''); setLoading(true); const r = await apiGet('/admin/billing/fee-rules'); setRules(r.rules || []); }
+    catch (e) { setError(e.message || 'Could not load fee rules'); } finally { setLoading(false); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    try {
+      const b = { ...form };
+      if (b.fee_type !== 'FIXED') delete b.fee_fixed;
+      if (b.fee_type !== 'PERCENT') delete b.fee_percent;
+      if (b.fee_type === 'NONE') { delete b.tax_percent; delete b.calculation_base; }
+      await apiPost('/admin/billing/fee-rules', b);
+      setConfirm(false); setForm(null); setFormError(''); await load();
+    } catch (e) { setConfirm(false); setFormError(e.message || 'Could not save'); }
+  };
+
+  const toggleRule = async (id, currentActive) => {
+    try {
+      setToggling(id);
+      await apiPatch(`/admin/billing/fee-rules/${id}/toggle`);
+      await load();
+    } catch (e) { setFormError(e.message || 'Could not toggle rule'); }
+    finally { setToggling(null); }
+  };
+
+  const RadioGroup = ({ label, options, value, onChange }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={muted}>{label}</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4 }}>
+        {options.map((o) => (
+          <button key={o.k} type="button" onClick={() => onChange(o.k)}
+            style={{ padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.8rem',
+              background: value === o.k ? 'var(--primary, #10b981)' : 'var(--bg-elevated, #1e293b)', color: '#fff' }}>
+            {o.l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      <p style={muted}>Customer service fee and its tax, per country and currency. A new rule never changes earlier bookings. No tax rate is assumed: you must enter one (0 if none).</p>
+
+      {!form && <button className="btn btn-primary" style={{ minHeight: 44, marginBottom: 16 }} onClick={() => { setForm({ ...blankFeeRule }); setFormError(''); }}>Add a new rule</button>}
+      {formError && !form ? <p style={{ color: '#ef4444' }}>{formError}</p> : null}
+
+      {form && (
+        <div className="card" style={card}>
+          <h3 style={h3}>New Fee Rule</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+            <label style={muted}>Country code<input className="form-input" style={{ minHeight: 44 }} value={form.country_code} onChange={(e) => set('country_code', e.target.value.toUpperCase())} /></label>
+            <label style={muted}>Currency code<input className="form-input" style={{ minHeight: 44 }} value={form.currency_code} onChange={(e) => set('currency_code', e.target.value.toUpperCase())} /></label>
+          </div>
+          <RadioGroup label="Fee type" options={FEE_TYPES} value={form.fee_type} onChange={(v) => set('fee_type', v)} />
+          {form.fee_type === 'FIXED' && <label style={muted}>Fee amount<input className="form-input" style={{ minHeight: 44 }} type="number" min="0" step="any" value={form.fee_fixed} onChange={(e) => set('fee_fixed', e.target.value)} /></label>}
+          {form.fee_type === 'PERCENT' && <label style={muted}>Fee (%)<input className="form-input" style={{ minHeight: 44 }} type="number" min="0" max="100" step="0.01" value={form.fee_percent} onChange={(e) => set('fee_percent', e.target.value)} /></label>}
+          {form.fee_type !== 'NONE' && (<>
+            <label style={muted}>Tax on the fee (%), 0 if none<input className="form-input" style={{ minHeight: 44 }} type="number" min="0" max="100" step="0.01" value={form.tax_percent} onChange={(e) => set('tax_percent', e.target.value)} /></label>
+            <label style={{ ...muted, display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <input type="checkbox" checked={form.tax_inclusive} onChange={(e) => set('tax_inclusive', e.target.checked)} /> Fee already includes tax
+            </label>
+          </>)}
+          <RadioGroup label="Apply to" options={APPLY_OPTIONS} value={form.apply_to} onChange={(v) => set('apply_to', v)} />
+          {form.fee_type !== 'NONE' && (<>
+            <RadioGroup label="Apply fee & tax on" options={CALC_BASE_OPTIONS} value={form.calculation_base} onChange={(v) => set('calculation_base', v)} />
+            <p style={{ ...muted, fontSize: '0.75rem', marginTop: -8, marginBottom: 12 }}>
+              {form.calculation_base === 'ONLINE' ? 'Fee and tax calculated only on the amount paid online (advance). The remaining venue balance is excluded from fee/tax calculation.' : 'Fee and tax calculated on the full booking amount, regardless of advance/full payment split.'}
+            </p>
+          </>)}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 12 }}>
+            <label style={{ ...muted, display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={form.show_fee_at_checkout} onChange={(e) => set('show_fee_at_checkout', e.target.checked)} /> Show fee at checkout</label>
+            <label style={{ ...muted, display: 'flex', alignItems: 'center', gap: 8 }}><input type="checkbox" checked={form.is_active} onChange={(e) => set('is_active', e.target.checked)} /> Active</label>
+          </div>
+          <label style={muted}>Note (recorded for audit)<input className="form-input" style={{ minHeight: 44 }} value={form.note} onChange={(e) => set('note', e.target.value)} /></label>
+          {formError ? <p style={{ color: '#ef4444', fontSize: '0.85rem' }}>{formError}</p> : null}
+          <div style={{ display: 'flex', gap: 10, marginTop: 12 }}>
+            <button className="btn btn-secondary" style={{ minHeight: 44, flex: 1 }} onClick={() => setForm(null)}>Cancel</button>
+            <button className="btn btn-primary" style={{ minHeight: 44, flex: 1 }} onClick={() => { setFormError(''); setConfirm(true); }}>Review and save</button>
+          </div>
+        </div>
+      )}
+
+      {confirm && (
+        <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', zIndex: 9999 }}>
+          <div className="card" style={{ padding: '2rem', maxWidth: 420 }}>
+            <h3 style={h3}>Save fee rule?</h3>
+            <p style={muted}>Applies to new bookings from now on. Earlier bookings keep the fee they were charged.</p>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button className="btn btn-secondary" style={{ flex: 1, minHeight: 44 }} onClick={() => setConfirm(false)}>Cancel</button>
+              <ActionButton onClick={save} style={{ flex: 1 }}>Save rule</ActionButton>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <h3 style={{ ...h3, marginTop: 24 }}>Rule history</h3>
+      <p style={muted}>Newest first; the first active row per country and currency is in force.</p>
+      {loading ? <p style={muted}>Loading…</p> : error ? <><p style={{ color: '#ef4444' }}>{error}</p><button className="btn btn-secondary" onClick={load}>Try again</button></> : rules.length === 0 ? (
+        <p style={muted}>No rules yet. Customers are charged no platform fee until one is added.</p>
+      ) : (
+        <div style={{ display: 'grid', gap: 10, marginTop: 12 }}>
+          {rules.map((r) => (
+            <div key={r.id} className="card" style={{ ...card, opacity: r.is_active === 0 ? 0.5 : 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <strong>{r.country_code} · {r.currency_code}</strong>
+                <button className="btn btn-secondary" style={{ minHeight: 36, fontSize: '0.75rem' }} disabled={toggling === r.id} onClick={() => toggleRule(r.id, r.is_active !== 0)}>
+                  {r.is_active !== 0 ? '✅ Active' : '⏸ Inactive'}
+                </button>
+              </div>
+              <Row k="Fee" v={r.fee_type === 'FIXED' ? money(r.fee_fixed_minor, r.currency_code) : r.fee_type === 'PERCENT' ? `${Number(r.fee_bps) / 100}%` : 'None'} />
+              <Row k="Tax" v={r.tax_bps == null ? '—' : `${Number(r.tax_bps) / 100}%${r.tax_inclusive ? ' (inclusive)' : ''}`} />
+              <Row k="Applies to" v={APPLY_LABEL[r.apply_to] || r.apply_to || 'All'} />
+              <Row k="Fee & tax on" v={CALC_LABEL[r.calculation_base] || 'Full booking amount'} />
+              <Row k="Show at checkout" v={r.show_fee_at_checkout !== 0 ? 'Yes' : 'No'} />
+              <Row k="Effective" v={fmtDT(r.effective_from)} />
+              <Row k="Note" v={r.note} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

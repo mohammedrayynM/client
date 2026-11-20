@@ -89,7 +89,7 @@ export default function OwnerDashboard() {
     name: '', location: '', address: '', sport_type: 'cricket',
     price_per_hour: '', description: '', images: [], amenities: [],
     open_time: '06:00', close_time: '23:00',
-    markup_type: 'fixed', markup_value: '200',
+    markup_type: 'fixed', markup_value: '0',
     latitude: '', longitude: '',
     slot_duration: 60, time_format: '12h', advance_percent: 100, is_24_hours: false,
     photos: [], coverImage: '', photosCount: 0,
@@ -496,6 +496,11 @@ export default function OwnerDashboard() {
     max_subscribers: 1, popular_badge: false, time_format: '12h'
   });
   const [subLoading, setSubLoading] = useState(false);
+  const [showAddMemberModal, setShowAddMemberModal] = useState(false);
+  const [memberForm, setMemberForm] = useState({
+    plan_id: '', name: '', phone: '', email: '', amount_paid: '', payment_type: 'offline'
+  });
+  const [addingMember, setAddingMember] = useState(false);
 
   // Match Requests State
   const [matchRequests, setMatchRequests] = useState([]);
@@ -757,6 +762,31 @@ export default function OwnerDashboard() {
       loadSubscriptionData();
     } catch (err) {
       alert(err.message);
+    }
+  }
+
+  async function handleAddMember(e) {
+    e.preventDefault();
+    if (!memberForm.plan_id) return alert('Please select a subscription plan');
+    if (!memberForm.name.trim()) return alert('Member name is required');
+    setAddingMember(true);
+    try {
+      await apiPost('/subscriptions/owner/members', {
+        plan_id: parseInt(memberForm.plan_id),
+        name: memberForm.name.trim(),
+        phone: memberForm.phone.trim() || undefined,
+        email: memberForm.email.trim() || undefined,
+        amount_paid: memberForm.amount_paid ? parseFloat(memberForm.amount_paid) : 0,
+        payment_type: memberForm.payment_type || 'offline'
+      });
+      alert('Member added successfully and slots reserved!');
+      setShowAddMemberModal(false);
+      setMemberForm({ plan_id: '', name: '', phone: '', email: '', amount_paid: '', payment_type: 'offline' });
+      loadSubscriptionData();
+    } catch (err) {
+      alert(err.message || 'Failed to add member');
+    } finally {
+      setAddingMember(false);
     }
   }
 
@@ -1301,7 +1331,7 @@ Do you want to proceed?`;
     setTurfForm({ 
       name: '', location: '', address: '', sport_type: 'cricket', price_per_hour: '', 
       description: '', images: [], amenities: [], open_time: '06:00', close_time: '23:00',
-      markup_type: 'fixed', markup_value: '200', latitude: '', longitude: '',
+      markup_type: 'fixed', markup_value: '0', latitude: '', longitude: '',
       slot_duration: 60, time_format: '12h', advance_percent: 100, is_24_hours: false,
       photos: [], coverImage: '', photosCount: 0,
       default_price: '', early_morning_price: '', morning_price: '', afternoon_price: '', evening_price: '',
@@ -4126,7 +4156,15 @@ Do you want to proceed?`;
               </div>
 
               <div className="card">
-                <h3>📊 Active Subscribers ({activeSubscribers.length})</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <h3 style={{ margin: 0 }}>📊 Active Subscribers ({activeSubscribers.length})</h3>
+                  <button className="btn btn-primary btn-sm" onClick={() => {
+                    setMemberForm({ plan_id: subPlans[0]?.id || '', name: '', phone: '', email: '', amount_paid: '', payment_type: 'offline' });
+                    setShowAddMemberModal(true);
+                  }}>
+                    ➕ Add Member
+                  </button>
+                </div>
                 {subLoading ? <div className="loading-spinner" /> : (
                   <div style={{ overflowX: 'auto' }}>
                     <table className="data-table">
@@ -4141,8 +4179,8 @@ Do you want to proceed?`;
                         {activeSubscribers.map(sub => (
                           <tr key={sub.id}>
                             <td>
-                              <div style={{ fontWeight: 600 }}>{sub.user_name}</div>
-                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sub.user_email}</div>
+                              <div style={{ fontWeight: 600 }}>{sub.member_name || sub.user_name || 'Member'}</div>
+                              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{sub.member_phone || sub.member_email || sub.user_email || '—'}</div>
                             </td>
                             <td>{sub.plan_name}</td>
                             <td style={{ color: 'var(--emerald-400)' }}>{new Date(sub.expiry_date).toLocaleDateString()}</td>
@@ -4157,6 +4195,66 @@ Do you want to proceed?`;
                 )}
               </div>
             </div>
+
+            {/* Manual Member Addition Modal */}
+            {showAddMemberModal && (
+              <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', zIndex: 9999 }}>
+                <div className="card" style={{ padding: '2rem', maxWidth: 480, width: '90%' }}>
+                  <h3 style={{ marginBottom: '1rem' }}>➕ Add Member to Subscription</h3>
+                  <form onSubmit={handleAddMember}>
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                      <label className="form-label">Subscription Plan *</label>
+                      <select className="form-input" value={memberForm.plan_id}
+                        onChange={(e) => setMemberForm({ ...memberForm, plan_id: e.target.value })} required>
+                        <option value="">Select Plan</option>
+                        {subPlans.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.start_time.substring(0, 5)} - {p.end_time.substring(0, 5)}) - {p.active_count ?? p.current_subscribers ?? 0}/{p.max_subscribers} members
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ marginBottom: '1rem' }}>
+                      <label className="form-label">Member Name *</label>
+                      <input className="form-input" value={memberForm.name}
+                        onChange={(e) => setMemberForm({ ...memberForm, name: e.target.value })} required placeholder="Full Name" />
+                    </div>
+                    <div className="grid-2" style={{ gap: '1rem', marginBottom: '1rem' }}>
+                      <div className="form-group">
+                        <label className="form-label">Phone</label>
+                        <input className="form-input" value={memberForm.phone}
+                          onChange={(e) => setMemberForm({ ...memberForm, phone: e.target.value })} placeholder="Mobile Number" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Email</label>
+                        <input className="form-input" type="email" value={memberForm.email}
+                          onChange={(e) => setMemberForm({ ...memberForm, email: e.target.value })} placeholder="Email address" />
+                      </div>
+                    </div>
+                    <div className="grid-2" style={{ gap: '1rem', marginBottom: '1.5rem' }}>
+                      <div className="form-group">
+                        <label className="form-label">Amount Paid</label>
+                        <input className="form-input" type="number" min="0" step="any" value={memberForm.amount_paid}
+                          onChange={(e) => setMemberForm({ ...memberForm, amount_paid: e.target.value })} placeholder="0.00" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Payment Mode</label>
+                        <select className="form-input" value={memberForm.payment_type}
+                          onChange={(e) => setMemberForm({ ...memberForm, payment_type: e.target.value })}>
+                          <option value="offline">Cash / Offline</option>
+                          <option value="upi">UPI</option>
+                          <option value="complimentary">Complimentary</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={() => setShowAddMemberModal(false)}>Cancel</button>
+                      <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={addingMember}>{addingMember ? 'Adding…' : 'Add Member'}</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
 
             <div className="card" style={{ marginTop: '2rem' }}>
               <h3>📜 All Subscription Plans</h3>
@@ -4177,7 +4275,7 @@ Do you want to proceed?`;
                         <td style={{ fontWeight: 700 }}>{plan.name}</td>
                         <td>{plan.start_time.substring(0, 5)} - {plan.end_time.substring(0, 5)}</td>
                         <td style={{ color: 'var(--emerald-400)', fontWeight: 800 }}>{formatPrice(plan.price)}</td>
-                        <td>{plan.current_subscribers} / {plan.max_subscribers}</td>
+                        <td>{plan.active_count ?? plan.current_subscribers ?? 0} / {plan.max_subscribers}</td>
                         <td>
                           <button className="btn btn-danger btn-sm">Disable</button>
                         </td>
