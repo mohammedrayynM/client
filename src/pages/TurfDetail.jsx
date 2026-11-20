@@ -263,29 +263,56 @@ export default function TurfDetailPage() {
       breakdown.advancePercent ?? advancePercent ?? 100,
       10
     );
-    const finalAmount = Number(breakdown.finalAmount || 0);
     const nextPaymentType = resolvedAdvancePercent === 100
       ? 'full'
       : (String(option || breakdown.paymentType || paymentType).toLowerCase() === 'full' ? 'full' : 'advance');
-    const advanceAmount = nextPaymentType === 'advance'
-      ? Math.round((finalAmount * (resolvedAdvancePercent / 100)) * 100) / 100
-      : finalAmount;
-    const pendingBalance = nextPaymentType === 'advance'
-      ? Math.round((finalAmount - advanceAmount) * 100) / 100
-      : 0;
+
+    const isAdv = nextPaymentType === 'advance';
+    const currentServiceFee = isAdv
+      ? (breakdown.advanceFee !== undefined ? breakdown.advanceFee : breakdown.serviceFee)
+      : (breakdown.fullFee !== undefined ? breakdown.fullFee : breakdown.serviceFee);
+    const currentServiceFeeTax = isAdv
+      ? (breakdown.advanceFeeTax !== undefined ? breakdown.advanceFeeTax : (breakdown.serviceFeeTax || 0))
+      : (breakdown.fullFeeTax !== undefined ? breakdown.fullFeeTax : (breakdown.serviceFeeTax || 0));
+    const totalFee = Math.round((Number(currentServiceFee || 0) + Number(currentServiceFeeTax || 0)) * 100) / 100;
+
+    const baseForHost = Number(breakdown.hostSplitShare != null ? breakdown.hostSplitShare : (breakdown.originalFinalAmount ?? (Number(breakdown.basePrice || 0) - Number(breakdown.discountAmount || 0))));
+    const preFeeAdvance = Math.round((baseForHost * (resolvedAdvancePercent / 100)) * 100) / 100;
+    const preFeePending = Math.round((baseForHost - preFeeAdvance) * 100) / 100;
+
+    const advanceAmount = isAdv
+      ? (breakdown.advancePayableAmount ?? (Math.round((preFeeAdvance + totalFee) * 100) / 100))
+      : (breakdown.fullPayableAmount ?? (Math.round((baseForHost + totalFee) * 100) / 100));
+    const pendingBalance = isAdv ? preFeePending : 0;
+    const finalAmount = isAdv
+      ? Math.round((advanceAmount + pendingBalance) * 100) / 100
+      : (breakdown.fullPayableAmount ?? (Math.round((baseForHost + totalFee) * 100) / 100));
 
     return {
       ...breakdown,
       advancePercent: resolvedAdvancePercent,
       paymentType: nextPaymentType,
+      serviceFee: currentServiceFee,
+      serviceFeeTax: currentServiceFeeTax,
+      totalCustomerFee: totalFee,
       advanceAmount,
-      pendingBalance
+      pendingBalance,
+      finalAmount
     };
   }
 
   function handlePaymentTypeChange(nextPaymentType) {
     setPaymentType(nextPaymentType);
     setPricingBreakdown(prev => applyPaymentOptionToBreakdown(prev, nextPaymentType));
+    // Also re-verify with authoritative backend calculation
+    calculatePricing(
+      selectedSlots,
+      appliedCoupon?.code || null,
+      needPlayersToggle,
+      matchData.players_needed,
+      matchData.contribution_amount,
+      nextPaymentType
+    );
   }
 
   // The per-player share is worked out by the backend from the FINAL (post-coupon) amount; the page only displays it.
@@ -1994,7 +2021,9 @@ export default function TurfDetailPage() {
                         <>
                           {pricingBreakdown.serviceFee > 0 && (
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Customer Service Fee</span>
+                              <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                                Customer Service Fee{pricingBreakdown.paymentType === 'advance' && pricingBreakdown.calculationBase === 'ONLINE' ? ` (${pricingBreakdown.advancePercent}% advance)` : ''}
+                              </span>
                               <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.9rem' }}>
                                 {formatPrice(pricingBreakdown.serviceFee)}
                               </span>
