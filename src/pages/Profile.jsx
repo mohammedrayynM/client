@@ -158,27 +158,127 @@ export default function UserProfile() {
             </div>
           </div>
 
-          {/* Bookings Section */}
+          {/* Unified Bookings Section — Activity + Venue */}
           <div className="card bookings-card">
-            <h2 className="bookings-title">
-              📋 My Bookings
-            </h2>
-            
-            {bookings.length === 0 ? (
-              <div className="bookings-empty">
-                <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>🏟️</div>
-                <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No bookings yet</h3>
-                <p style={{ color: 'var(--text-muted)' }}>You haven&apos;t booked any turfs yet.</p>
-                <Link to="/turfs" className="btn btn-primary btn-sm" style={{ marginTop: '1rem', borderRadius: '50px' }}>
-                  Browse Turfs
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <h2 className="bookings-title" style={{ margin: 0 }}>
+                📋 My Bookings
+              </h2>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <Link to="/activities" className="btn btn-secondary btn-sm" style={{ borderRadius: '50px', fontSize: '0.8rem', padding: '4px 14px' }}>
+                  🎡 Browse Parks
                 </Link>
+                <Link to="/turfs" className="btn btn-secondary btn-sm" style={{ borderRadius: '50px', fontSize: '0.8rem', padding: '4px 14px' }}>
+                  🏟️ Browse Turfs
+                </Link>
+              </div>
+            </div>
+            
+            {bookings.length === 0 && activityTickets.length === 0 ? (
+              <div className="bookings-empty">
+                <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>🎟️</div>
+                <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No bookings yet</h3>
+                <p style={{ color: 'var(--text-muted)' }}>You haven&apos;t made any bookings yet.</p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+                  <Link to="/turfs" className="btn btn-primary btn-sm" style={{ borderRadius: '50px' }}>
+                    Browse Turfs
+                  </Link>
+                  <Link to="/activities" className="btn btn-secondary btn-sm" style={{ borderRadius: '50px' }}>
+                    Explore Parks
+                  </Link>
+                </div>
               </div>
             ) : (
               <div className="bookings-grid">
-                {bookings.map(booking => (
-                  <div key={booking.id} className="booking-item">
+                {/* Activity / Amusement Park bookings first */}
+                {activityTickets.map((pass) => (
+                  <div key={`act-${pass.id}`} className="booking-item" style={{ borderLeft: '3px solid var(--emerald-400)' }}>
                     <div className="booking-item-header">
                       <div>
+                        <span style={{
+                          display: 'inline-block',
+                          background: 'linear-gradient(135deg, #059669, #10b981)',
+                          color: '#fff',
+                          fontSize: '0.65rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '50px',
+                          marginBottom: '6px',
+                          letterSpacing: '0.5px',
+                          textTransform: 'uppercase'
+                        }}>
+                          🎡 Amusement Park
+                        </span>
+                        <h3 className="booking-turf-name">{pass.activity_name}</h3>
+                        <p className="booking-id">Booking ID: {pass.booking_code || `BA-${pass.id}`}</p>
+                      </div>
+                      <span className={`booking-badge ${
+                        pass.status === 'confirmed' ? 'badge-confirmed' :
+                        pass.status === 'cancelled' ? 'badge-cancelled' :
+                        pass.status === 'refunded' ? 'badge-cancelled' :
+                        'badge-pending'
+                      }`}>
+                        {pass.status === 'confirmed' ? '✅ Confirmed' :
+                         pass.status === 'cancelled' ? '❌ Cancelled' :
+                         pass.status === 'refunded' ? '💸 Refunded' :
+                         `⏳ ${pass.status || 'Pending'}`}
+                      </span>
+                    </div>
+
+                    <div className="booking-details-grid">
+                      <div>
+                        <div className="booking-detail-label">Visit Date</div>
+                        <div className="booking-detail-value">
+                          {new Date(pass.booking_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="booking-detail-label">Entry Slot</div>
+                        <div className="booking-detail-value">{pass.time_window_label || 'All-Day Pass'}</div>
+                      </div>
+                      <div>
+                        <div className="booking-detail-label">Total Amount</div>
+                        <div className="booking-detail-value" style={{ color: 'var(--emerald-400)', fontWeight: 700 }}>
+                          ₹{pass.final_amount || pass.total_amount}
+                        </div>
+                      </div>
+                      {pass.items && pass.items.length > 0 && (
+                        <div>
+                          <div className="booking-detail-label">Tickets</div>
+                          <div className="booking-detail-value" style={{ fontSize: '0.8rem' }}>
+                            {pass.items.map(it => `${it.type_name || it.ticket_type} × ${it.quantity}`).join(', ')}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {pass.status === 'confirmed' && (
+                      <Link to={`/my-tickets/${pass.id}`} className="booking-receipt-link" style={{ color: 'var(--emerald-400)' }}>
+                        View QR Pass Ticket →
+                      </Link>
+                    )}
+                  </div>
+                ))}
+
+                {/* Venue / Turf bookings after activity bookings */}
+                {bookings.map(booking => (
+                  <div key={`venue-${booking.id}`} className="booking-item">
+                    <div className="booking-item-header">
+                      <div>
+                        <span style={{
+                          display: 'inline-block',
+                          background: 'linear-gradient(135deg, #2563eb, #3b82f6)',
+                          color: '#fff',
+                          fontSize: '0.65rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '50px',
+                          marginBottom: '6px',
+                          letterSpacing: '0.5px',
+                          textTransform: 'uppercase'
+                        }}>
+                          🏟️ Venue Booking
+                        </span>
                         <h3 className="booking-turf-name">
                           {booking.turf_name}
                         </h3>
@@ -329,67 +429,6 @@ export default function UserProfile() {
             )}
           </div>
 
-          {/* Activity Passes Section */}
-          <div className="card bookings-card" style={{ marginTop: '2rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'between', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-              <h2 className="bookings-title" style={{ margin: 0 }}>
-                🎡 Amusement Park & Activity Passes
-              </h2>
-              <Link to="/activities" className="btn btn-secondary btn-sm" style={{ borderRadius: '50px', fontSize: '0.8rem', padding: '4px 14px' }}>
-                Browse Parks →
-              </Link>
-            </div>
-
-            {activityTickets.length === 0 ? (
-              <div className="bookings-empty">
-                <div style={{ fontSize: '3rem', marginBottom: '1rem', opacity: 0.5 }}>🎢</div>
-                <h3 style={{ color: 'var(--text-primary)', marginBottom: '0.5rem' }}>No activity passes yet</h3>
-                <p style={{ color: 'var(--text-muted)' }}>You haven't booked any amusement or water park tickets yet.</p>
-                <Link to="/activities" className="btn btn-primary btn-sm" style={{ marginTop: '1rem', borderRadius: '50px' }}>
-                  Explore Experiences
-                </Link>
-              </div>
-            ) : (
-              <div className="bookings-grid">
-                {activityTickets.map((pass) => (
-                  <div key={pass.id} className="booking-item">
-                    <div className="booking-item-header">
-                      <div>
-                        <h3 className="booking-turf-name">{pass.activity_name}</h3>
-                        <p className="booking-id">Pass Ref: #{pass.booking_code || pass.id}</p>
-                      </div>
-                      <span className={`booking-badge ${pass.status === 'confirmed' ? 'badge-confirmed' : 'badge-pending'}`}>
-                        {pass.status === 'confirmed' ? '✅ Confirmed' : pass.status}
-                      </span>
-                    </div>
-
-                    <div className="booking-details-grid">
-                      <div>
-                        <div className="booking-detail-label">Visit Date</div>
-                        <div className="booking-detail-value">
-                          {new Date(pass.booking_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="booking-detail-label">Entry Slot</div>
-                        <div className="booking-detail-value">{pass.time_window_label || 'All-Day Pass'}</div>
-                      </div>
-                      <div>
-                        <div className="booking-detail-label">Total Amount</div>
-                        <div className="booking-detail-value" style={{ color: 'var(--emerald-400)', fontWeight: 700 }}>
-                          ₹{pass.final_amount || pass.total_amount}
-                        </div>
-                      </div>
-                    </div>
-
-                    <Link to={`/my-tickets/${pass.id}`} className="booking-receipt-link">
-                      View QR Pass Ticket →
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
           
         </div>
       </div>

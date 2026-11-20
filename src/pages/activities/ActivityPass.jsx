@@ -44,17 +44,16 @@ export default function ActivityPass() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Payment still being confirmed: the server checks Razorpay on every load and issues the QR once the payment is
-  // captured, so re-check every few seconds for a minute (the QR then appears without a manual refresh).
-  const pendingStatus = data?.booking?.status === 'pending';
+  // Payment still being confirmed or tickets generating: check backend and issue the QR once confirmed
+  const pendingStatus = data?.booking?.status === 'pending' || (data?.booking?.status === 'confirmed' && (!data?.tickets || data?.tickets.length === 0));
   useEffect(() => {
     if (!pendingStatus) return undefined;
     let tries = 0;
     const timer = setInterval(() => {
       tries += 1;
       fetchMyTicketDetail(id).then(setData).catch(() => {});
-      if (tries >= 12) clearInterval(timer);
-    }, 5000);
+      if (tries >= 15) clearInterval(timer);
+    }, 3000);
     return () => clearInterval(timer);
   }, [id, pendingStatus]);
 
@@ -132,24 +131,34 @@ export default function ActivityPass() {
           <div className={`p-6 text-center ${isConfirmed ? 'bg-gradient-to-r from-emerald-600 to-teal-700' : 'bg-slate-800'}`}>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-black/20 text-white text-xs font-black uppercase tracking-wider mb-2">
               <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-              {isConfirmed ? 'Booking Confirmed' : booking.status}
+              {isConfirmed ? 'Booking Confirmed • Payment Successful' : (booking.status?.toUpperCase() || 'PROCESSING')}
             </div>
             <h1 className="text-2xl font-black text-white">{booking.activity_name}</h1>
             <p className="text-xs text-emerald-100 mt-1">Book Arena Official Admission Pass</p>
+            <div className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-black/40 border border-white/10 text-white text-xs font-mono font-bold tracking-wider">
+              <span className="text-slate-300">Booking ID:</span>
+              <span className="text-emerald-300 font-extrabold">{booking.booking_code || `BA-${booking.id}`}</span>
+            </div>
           </div>
 
           {/* Render each valid server-issued QR. No QR is offered for pending or unpaid bookings. */}
           {issuedTickets.length > 0 ? (
-            <div className="p-8 text-center bg-slate-950 border-b border-slate-800 flex flex-col items-center gap-6">
+            <div className="p-6 sm:p-8 text-center bg-slate-950 border-b border-slate-800 flex flex-col items-center gap-5">
+              <div className="px-4 py-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-center">
+                <p className="text-xs font-bold text-emerald-400">
+                  ⚡ Show your QR ticket at the entrance for verification.
+                </p>
+              </div>
+
               {issuedTickets.map((ticket, index) => {
                 const qrSvg = qrPath(ticket.qr_token);
                 return (
-                  <div key={ticket.qr_token} className="flex flex-col items-center">
+                  <div key={ticket.qr_token} className="flex flex-col items-center w-full max-w-xs">
                     <span className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                       <QrIcon className="w-4 h-4 text-emerald-400" />
                       {issuedTickets.length > 1
                         ? `Ticket ${index + 1} of ${issuedTickets.length}${ticket.ticket_type_name ? ` · ${ticket.ticket_type_name}` : ''} · ${ticket.quantity_covered || 1} admission${Number(ticket.quantity_covered || 1) === 1 ? '' : 's'}`
-                        : 'Digital Access Pass'}
+                        : (ticket.ticket_type_name ? `${ticket.ticket_type_name} Pass` : 'Digital Admission Pass')}
                     </span>
                     <div className="p-4 bg-white rounded-2xl shadow-xl inline-block">
                       <svg
@@ -166,22 +175,34 @@ export default function ActivityPass() {
                       TICKET {index + 1} · {ticket.qr_token.slice(0, 12).toUpperCase()}
                     </p>
                     <p className="text-[11px] font-bold mt-1 text-slate-300">
-                      {STATUS_LABEL[ticket.status] || ticket.status}
+                      Status: <span className="text-emerald-400 font-extrabold">{STATUS_LABEL[ticket.status] || ticket.status}</span>
                       {Number(ticket.quantity_covered) > 1 ? ` · ${Math.max(0, Number(ticket.quantity_covered) - Number(ticket.redeemed_quantity || 0))} of ${ticket.quantity_covered} entries left` : ''}
                     </p>
                   </div>
                 );
               })}
-              <p className="text-[11px] text-slate-400">Present each QR at the park gate or activity checkpoint.</p>
+              <p className="text-[11px] text-slate-400">Gate staff can scan this digital QR pass directly from your phone screen.</p>
             </div>
           ) : (
             <div className="p-6 text-center bg-slate-950 border-b border-slate-800 text-sm text-slate-400">
               {isConfirmed && closedTickets.length > 0
                 ? `This ticket is ${String(STATUS_LABEL[closedTickets[0].status] || closedTickets[0].status).toLowerCase()} and can no longer be scanned.`
                 : isConfirmed
-                  ? 'No active QR ticket is available for this booking. Please contact the activity.'
+                  ? (
+                    <div className="flex flex-col items-center py-4 gap-3">
+                      <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-sm font-semibold text-white">Generating your admission pass...</p>
+                      <p className="text-xs text-slate-400">Your payment is confirmed. Fetching your unique QR code now.</p>
+                    </div>
+                  )
                   : booking.status === 'pending'
-                    ? 'Confirming your payment… your QR ticket will appear here automatically once the payment is verified.'
+                    ? (
+                      <div className="flex flex-col items-center py-4 gap-3">
+                        <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                        <p className="text-sm font-semibold text-white">Confirming your payment…</p>
+                        <p className="text-xs text-slate-400">Your QR ticket will appear here automatically once payment confirmation finishes.</p>
+                      </div>
+                    )
                     : booking.status === 'cancelled'
                       ? (booking.refund_amount > 0 ? 'This booking was cancelled and refunded. No QR ticket is valid for it.' : 'This booking was cancelled. No QR ticket is valid for it.')
                       : 'Your QR ticket will appear after payment is confirmed.'}
@@ -193,6 +214,20 @@ export default function ActivityPass() {
             {/* Meta Grid */}
             <div className="grid grid-cols-2 gap-4 pb-6 border-b border-slate-800 text-xs">
               <div>
+                <span className="text-slate-500 block">Booking Reference</span>
+                <span className="font-mono font-bold text-emerald-400 text-sm mt-0.5 block truncate">
+                  {booking.booking_code || `BA-${booking.id}`}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block">Payment Reference</span>
+                <span className="font-mono font-bold text-white text-xs mt-0.5 block truncate" title={booking.razorpay_payment_id || booking.razorpay_order_id || 'Online'}>
+                  {booking.razorpay_payment_id || booking.razorpay_order_id || 'Verified Online'}
+                </span>
+              </div>
+
+              <div>
                 <span className="text-slate-500 block">Visit Date</span>
                 <span className="font-bold text-white text-sm mt-0.5 flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-emerald-400" /> {formattedDate}
@@ -200,21 +235,35 @@ export default function ActivityPass() {
               </div>
 
               <div>
-                <span className="text-slate-500 block">Time Slot</span>
+                <span className="text-slate-500 block">Booking Date</span>
                 <span className="font-bold text-white text-sm mt-0.5 flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                  {booking.created_at ? new Date(booking.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                </span>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block">Time Slot</span>
+                <span className="font-bold text-white text-xs mt-0.5 flex items-center gap-1">
                   {booking.time_window_label || 'All-Day Entry'}
                 </span>
               </div>
 
               <div>
                 <span className="text-slate-500 block">Customer Name</span>
-                <span className="font-bold text-white mt-0.5">{booking.customer_name}</span>
+                <span className="font-bold text-white text-xs mt-0.5 block truncate">{booking.customer_name}</span>
               </div>
 
               <div>
                 <span className="text-slate-500 block">Mobile Phone</span>
-                <span className="font-bold text-white mt-0.5">{booking.customer_phone}</span>
+                <span className="font-bold text-white text-xs mt-0.5 block truncate">{booking.customer_phone}</span>
+              </div>
+
+              <div>
+                <span className="text-slate-500 block">Payment Status</span>
+                <span className="font-bold text-emerald-400 text-xs mt-0.5 block uppercase">
+                  {booking.payment_status === 'success' ? '✅ Paid & Verified' : booking.payment_status}
+                </span>
               </div>
             </div>
 

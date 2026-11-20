@@ -32,6 +32,8 @@ import {
   User,
   Phone,
   Mail,
+  ShoppingCart,
+  ChevronRight,
 } from 'lucide-react';
 
 function getTodayStr() {
@@ -48,6 +50,7 @@ export default function ActivityBooking() {
   const location = useLocation();
   const isCheckoutStep = location.pathname.endsWith('/checkout');
   const hydratedCartSlug = useRef(null);
+  const summaryRef = useRef(null);
 
   // Authentication & Customer Details
   const [currentUser, setCurrentUser] = useState(null);
@@ -272,6 +275,7 @@ export default function ActivityBooking() {
     return Number.isSafeInteger(unit) && unit >= 0 ? sum + unit * Number(item.quantity) : sum;
   }, 0);
   const estimatedAmount = (estimateSubtotalMinor + estimateAddonMinor) / (10 ** currencyDigits);
+  const totalSelectedCount = items.reduce((n, item) => n + Number(item.quantity || 0), 0);
   const dateIsAvailable = openDates.length ? openDates.some((d) => d.date === selectedDate) : /^\d{4}-\d{2}-\d{2}$/.test(selectedDate);
   const validSelection = items.length > 0 && dateIsAvailable && !!availability && items.every((item) => {
     const ticket = activeTickets.find((t) => Number(t.id) === Number(item.ticket_type_id));
@@ -436,7 +440,7 @@ export default function ActivityBooking() {
         </div>
       </div>
 
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+      <main className={`max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow ${!isCheckoutStep && totalSelectedCount > 0 ? 'pb-28' : ''}`}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Tickets & Options Selection */}
           <div className="lg:col-span-2 space-y-6">
@@ -665,12 +669,12 @@ export default function ActivityBooking() {
             </>}
 
             {/* 5. Customer Details Form */}
-            {isCheckoutStep && <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl">
+            {isCheckoutStep && <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xl">
               <h2 className="text-base font-bold text-white flex items-center gap-2 mb-2">
-                <User className="w-5 h-5 text-emerald-400" />
+                <User className="w-5 h-5 text-emerald-400 flex-shrink-0" />
                 Complete Your Booking
               </h2>
-              <p className="text-slate-400 text-xs mb-4">
+              <p className="text-slate-400 text-xs mb-4 leading-relaxed">
                 Confirm your contact details. Your verified QR tickets will be issued immediately upon payment.
               </p>
 
@@ -680,14 +684,14 @@ export default function ActivityBooking() {
                     Full Name <span className="text-rose-400">*</span>
                   </label>
                   <div className="relative">
-                    <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <User className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="text"
                       required
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       placeholder="e.g. John Doe"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
                     />
                   </div>
                 </div>
@@ -697,14 +701,14 @@ export default function ActivityBooking() {
                     Phone Number <span className="text-rose-400">*</span>
                   </label>
                   <div className="relative">
-                    <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Phone className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="tel"
                       required
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder="10-digit mobile number"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
                     />
                   </div>
                 </div>
@@ -714,13 +718,13 @@ export default function ActivityBooking() {
                     Email Address (optional)
                   </label>
                   <div className="relative">
-                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <Mail className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="e.g. user@gmail.com"
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30"
                     />
                   </div>
                 </div>
@@ -729,7 +733,7 @@ export default function ActivityBooking() {
           </div>
 
           {/* Right Column: Order Summary & Payment */}
-          <div className="space-y-6">
+          <div className="space-y-6" ref={summaryRef}>
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 sticky top-20 shadow-2xl">
               <h2 className="text-lg font-bold text-white mb-4">Booking Summary</h2>
 
@@ -903,6 +907,43 @@ export default function ActivityBooking() {
           </div>
         </div>
       </main>
+
+      {/* ISSUE 1: Floating Booking Button — visible on the ticket selection step when tickets are selected */}
+      {!isCheckoutStep && totalSelectedCount > 0 && (
+        <div
+          className="fixed bottom-0 inset-x-0 z-40 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 shadow-[0_-4px_24px_rgba(0,0,0,0.5)] px-4 py-3 safe-area-pb"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <ShoppingCart className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+              <div className="min-w-0">
+                <span className="text-xs text-slate-400 block leading-tight">{totalSelectedCount} ticket{totalSelectedCount !== 1 ? 's' : ''} selected</span>
+                <span className="text-base font-black text-emerald-400 block leading-tight">
+                  {preview ? `₹${preview.total ?? preview.final_amount ?? preview.total_amount ?? estimatedAmount}` : formatPrice(estimatedAmount, currency)}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              disabled={!canContinue}
+              onClick={() => {
+                if (summaryRef.current) {
+                  summaryRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                } else {
+                  const target = `/activities/${activity.slug}/checkout`;
+                  navigate(currentUser
+                    ? target
+                    : `/login?redirect=${encodeURIComponent(target)}&reason=booking`);
+                }
+              }}
+              className="flex items-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold text-sm rounded-xl shadow-lg shadow-emerald-950 transition-all flex-shrink-0"
+            >
+              Continue to Booking <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       <Footer />
     </div>
